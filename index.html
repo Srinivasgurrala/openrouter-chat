@@ -1,0 +1,1354 @@
+<title>OpenRouter Chat</title>
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #16171b;
+    --panel: #1e2025;
+    --panel-2: #24262c;
+    --border: #32343b;
+    --text: #e8e6e1;
+    --text-dim: #8b8d94;
+    --accent: #6d8cff;
+    --accent-dim: #3a4266;
+    --danger: #e5686f;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    height: 100vh;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .app {
+    width: 100%;
+    max-width: 760px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+
+  header .title {
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.2px;
+  }
+
+  header .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--danger);
+    flex-shrink: 0;
+    transition: background 0.2s;
+  }
+  header .dot.ready { background: #6fce8a; }
+
+  header .spacer { flex: 1; }
+
+  .icon-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 7px;
+    padding: 6px 11px;
+    font-size: 12.5px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .icon-btn:hover { border-color: var(--accent); color: var(--text); }
+
+  .model-badge {
+    background: var(--panel-2);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 6px 10px;
+    font-size: 11.5px;
+    font-family: inherit;
+    max-width: 210px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .model-badge b { color: var(--text); font-weight: 600; }
+
+  .setup {
+    margin: auto;
+    width: 100%;
+    max-width: 420px;
+    padding: 24px;
+  }
+  .setup h2 {
+    font-size: 17px;
+    margin: 0 0 6px;
+  }
+  .setup p {
+    color: var(--text-dim);
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 0 0 18px;
+  }
+  .setup input {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    margin-bottom: 12px;
+  }
+  .setup input:focus { outline: none; border-color: var(--accent); }
+  .setup button {
+    width: 100%;
+    background: var(--accent);
+    color: #101116;
+    border: none;
+    padding: 11px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 13.5px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .setup button:hover { filter: brightness(1.08); }
+  .setup .note {
+    font-size: 11.5px;
+    color: var(--text-dim);
+    margin-top: 14px;
+    line-height: 1.5;
+  }
+
+  .thread {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .empty {
+    margin: auto;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13.5px;
+  }
+
+  .msg {
+    display: flex;
+    gap: 12px;
+    max-width: 100%;
+  }
+  .msg .role {
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1px;
+  }
+  .msg.user .role { background: var(--panel-2); color: var(--text-dim); }
+  .msg.assistant .role { background: var(--accent-dim); color: var(--accent); }
+
+  .bubble {
+    flex: 1;
+    font-size: 14px;
+    line-height: 1.6;
+    padding-top: 3px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    min-width: 0;
+  }
+  .bubble.error { color: var(--danger); }
+  .bubble code {
+    background: var(--panel-2);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12.5px;
+  }
+  .bubble pre {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    margin: 6px 0;
+  }
+  .bubble pre code { background: none; padding: 0; }
+
+  .cursor {
+    display: inline-block;
+    width: 7px;
+    height: 14px;
+    background: var(--accent);
+    margin-left: 1px;
+    vertical-align: text-bottom;
+    animation: blink 1s step-start infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .cursor { animation: none; opacity: 0.6; }
+  }
+
+  form.composer {
+    border-top: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+    flex-shrink: 0;
+  }
+  textarea {
+    flex: 1;
+    resize: none;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 9px;
+    font-size: 14px;
+    font-family: inherit;
+    line-height: 1.4;
+    max-height: 160px;
+  }
+  textarea:focus { outline: none; border-color: var(--accent); }
+  button.send {
+    background: var(--accent);
+    color: #101116;
+    border: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 9px;
+    font-size: 16px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  button.send:disabled { background: var(--panel-2); color: var(--text-dim); cursor: default; }
+
+  .thread::-webkit-scrollbar { width: 8px; }
+  .thread::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .composer-inner { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .composer-row { display: flex; gap: 10px; align-items: flex-end; }
+
+  button.attach-btn {
+    background: var(--panel);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    width: 40px;
+    height: 40px;
+    border-radius: 9px;
+    font-size: 17px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  button.attach-btn:hover { border-color: var(--accent); color: var(--text); }
+
+  .attachments-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 5px 8px 5px 5px;
+    font-size: 12px;
+    max-width: 220px;
+  }
+  .chip.error { border-color: var(--danger); }
+  .chip .thumb {
+    width: 22px; height: 22px;
+    border-radius: 5px;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: var(--panel);
+  }
+  .chip .icon {
+    width: 22px; height: 22px;
+    border-radius: 5px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+    flex-shrink: 0;
+    letter-spacing: 0.2px;
+  }
+  .chip.error .icon { background: rgba(229, 104, 111, 0.18); color: var(--danger); }
+  .chip .meta { overflow: hidden; min-width: 0; }
+  .chip .name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 140px;
+    color: var(--text);
+  }
+  .chip .sub { color: var(--text-dim); font-size: 10.5px; }
+  .chip.error .sub { color: var(--danger); }
+  .chip .remove {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+    padding: 0 2px;
+    flex-shrink: 0;
+  }
+  .chip .remove:hover { color: var(--danger); }
+  .chip .spinner {
+    width: 11px; height: 11px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    .chip .spinner { animation: none; }
+  }
+
+  .msg-attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .msg-attachments .chip { max-width: 180px; cursor: default; }
+
+  .quick-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .quick-actions button {
+    background: var(--panel);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 11.5px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .quick-actions button:hover { border-color: var(--accent); color: var(--text); }
+
+  .msg-tools {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .msg.assistant:hover .msg-tools { opacity: 1; }
+  .msg-tools button {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 2px 4px;
+    font-family: inherit;
+  }
+  .msg-tools button:hover { color: var(--text); }
+
+  button.send.stop {
+    background: var(--danger);
+    color: #101116;
+  }
+
+  .img-inline {
+    max-width: 220px;
+    border-radius: 8px;
+    display: block;
+    margin: 6px 0;
+  }
+</style>
+
+<div class="app">
+  <header>
+    <div class="dot" id="statusDot"></div>
+    <div class="title">OpenRouter Chat</div>
+    <div class="spacer"></div>
+    <div class="model-badge" id="modelBadge" title="Model is chosen automatically from free, available models">Auto · picking model…</div>
+    <button class="icon-btn" id="clearBtn" type="button">New chat</button>
+    <button class="icon-btn" id="keyBtn" type="button">Key</button>
+  </header>
+
+  <div id="setupScreen" class="setup" style="display:none;">
+    <h2>Connect your OpenRouter key</h2>
+    <p>Paste an API key from openrouter.ai/keys. It's kept only in this browser tab's memory — never sent anywhere but OpenRouter.</p>
+    <input type="password" id="apiKeyInput" placeholder="sk-or-v1-..." autocomplete="off" spellcheck="false" />
+    <button id="saveKeyBtn" type="button">Start chatting</button>
+    <div class="note">Stored in sessionStorage on your device only. Reloading the tab keeps it; closing the tab clears it.</div>
+  </div>
+
+  <div id="thread" class="thread" style="display:none;">
+    <div class="empty" id="emptyState">Ask anything, or attach a file. A free model is picked automatically.</div>
+  </div>
+
+  <form id="composer" class="composer" style="display:none;">
+    <div class="composer-inner">
+      <div id="quickActions" class="quick-actions"></div>
+      <div id="attachmentsBar" class="attachments-bar"></div>
+      <div class="composer-row">
+        <button type="button" class="attach-btn" id="attachBtn" title="Attach files">+</button>
+        <textarea id="input" rows="1" placeholder="Message the model..."></textarea>
+        <button type="submit" class="send" id="sendBtn">↑</button>
+      </div>
+    </div>
+  </form>
+  <input type="file" id="fileInput" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" style="display:none;">
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const setupScreen = $('setupScreen');
+  const thread = $('thread');
+  const composerForm = $('composer');
+  const input = $('input');
+  const sendBtn = $('sendBtn');
+  const apiKeyInput = $('apiKeyInput');
+  const saveKeyBtn = $('saveKeyBtn');
+  const keyBtn = $('keyBtn');
+  const clearBtn = $('clearBtn');
+  const modelBadge = $('modelBadge');
+  const statusDot = $('statusDot');
+  let emptyState = $('emptyState');
+
+  let apiKey = sessionStorage.getItem('openrouter_key') || '';
+  let messages = [];
+  let busy = false;
+  let abortController = null;
+
+  // ---------- Automatic model selection ----------
+  // No model picker is shown — a free, currently-available model is chosen
+  // automatically, with silent fallback to the next candidate if one is
+  // rate-limited or temporarily unavailable (common on free-tier models).
+  const FALLBACK_TEXT_POOL = [
+    { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Llama 3.3 70B (free)' },
+    { id: 'qwen/qwen3-next-80b-a3b-instruct:free', name: 'Qwen3 Next 80B (free)' },
+    { id: 'nvidia/nemotron-3-super-120b-a12b:free', name: 'Nemotron 3 Super (free)' },
+    { id: 'nousresearch/hermes-3-llama-3.1-405b:free', name: 'Hermes 3 405B (free)' }
+  ];
+  const FALLBACK_VISION_POOL = [
+    { id: 'google/gemma-4-31b-it:free', name: 'Gemma 4 31B (free)' },
+    { id: 'nvidia/nemotron-nano-12b-v2-vl:free', name: 'Nemotron Nano 12B VL (free)' }
+  ];
+  const EXCLUDE_PATTERN = /safety|guard|moderation|embed|clip|lyria|router|content-safety/i;
+  const PREFERRED_PROVIDERS = ['meta-llama', 'qwen', 'google', 'nvidia', 'openai', 'mistralai', 'nousresearch', 'deepseek'];
+
+  let textPool = FALLBACK_TEXT_POOL.slice();
+  let visionPool = FALLBACK_VISION_POOL.slice();
+
+  function rankModel(m) {
+    let score = 0;
+    const provider = m.id.split('/')[0];
+    if (PREFERRED_PROVIDERS.includes(provider)) score += 100;
+    score += Math.min(m.context_length || 0, 2000000) / 100000;
+    return score;
+  }
+
+  async function loadModelPools() {
+    try {
+      const res = await fetch('https://openrouter.ai/api/v1/models');
+      if (!res.ok) throw new Error('bad status');
+      const json = await res.json();
+      const free = json.data.filter(m => {
+        const p = m.pricing || {};
+        const arch = m.architecture || {};
+        const outputs = arch.output_modalities || [];
+        const reasoning = m.reasoning || {};
+        return p.prompt === '0' && p.completion === '0' &&
+          outputs.length === 1 && outputs[0] === 'text' &&
+          reasoning.mandatory !== true &&
+          !EXCLUDE_PATTERN.test(m.id) && !EXCLUDE_PATTERN.test(m.name || '');
+      });
+      const toEntry = m => ({ id: m.id, name: m.name || m.id, score: rankModel(m) });
+      const text = free
+        .filter(m => !(m.architecture.input_modalities || []).includes('image'))
+        .map(toEntry).sort((a, b) => b.score - a.score);
+      const vision = free
+        .filter(m => (m.architecture.input_modalities || []).includes('image'))
+        .map(toEntry).sort((a, b) => b.score - a.score);
+      if (text.length) textPool = text;
+      if (vision.length) visionPool = vision;
+    } catch (err) {
+      // keep hardcoded fallback pools
+    }
+  }
+  loadModelPools();
+
+  let lastUsedModelName = '';
+  function updateModelBadge(name) {
+    lastUsedModelName = name;
+    modelBadge.innerHTML = '';
+    modelBadge.textContent = 'Auto · ';
+    const b = document.createElement('b');
+    b.textContent = name;
+    modelBadge.appendChild(b);
+  }
+  updateModelBadge('selecting…');
+
+  // Streams from the first candidate that works, silently falling back to the
+  // next one on HTTP-level failures (404/402/429/5xx) AND on in-stream
+  // provider errors — OpenRouter sometimes returns HTTP 200 with an SSE
+  // stream whose only payload is `{choices: [], error: {...}}` when the
+  // upstream provider is overloaded, so a plain res.ok check isn't enough.
+  async function fetchChatCompletion(pool, body, signal, onDelta) {
+    let lastErr = null;
+    for (let i = 0; i < pool.length; i++) {
+      const candidate = pool[i];
+      try {
+        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          signal,
+          headers: {
+            'Authorization': 'Bearer ' + apiKey,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': location.href,
+            'X-Title': 'OpenRouter Chat Artifact'
+          },
+          body: JSON.stringify(Object.assign({}, body, { model: candidate.id }))
+        });
+        if (!res.ok) {
+          const errBody = await res.text().catch(() => '');
+          const err = new Error('HTTP ' + res.status + ': ' + errBody.slice(0, 300));
+          if (res.status === 401) throw err;
+          lastErr = err;
+          continue;
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let gotContent = false;
+        let streamErr = null;
+
+        outer: while (true) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          buffer += decoder.decode(chunk.value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) continue;
+            const payload = trimmed.slice(5).trim();
+            if (payload === '[DONE]') continue;
+            let json;
+            try { json = JSON.parse(payload); } catch (e) { continue; }
+            if (json.error) { streamErr = json.error; break outer; }
+            const delta = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content;
+            if (delta) { gotContent = true; onDelta(delta, candidate); }
+          }
+        }
+
+        if (streamErr && !gotContent) {
+          lastErr = new Error(streamErr.message || 'Upstream provider error');
+          continue;
+        }
+        return { model: candidate, truncated: !!streamErr };
+      } catch (e) {
+        if (e.name === 'AbortError') throw e;
+        lastErr = e;
+      }
+    }
+    throw lastErr || new Error('All candidate models are currently unavailable.');
+  }
+
+  const attachBtn = $('attachBtn');
+  const fileInput = $('fileInput');
+  const attachmentsBar = $('attachmentsBar');
+  let attachments = [];
+  let attachmentSeq = 0;
+
+  // ---------- Raw DEFLATE inflate (RFC 1951) + ZIP/PDF helpers ----------
+  // No external libraries are available inside an Artifact's sandboxed CSP,
+  // so docx/xlsx (zip+XML) and PDF (FlateDecode streams) are decoded by hand.
+  function inflateRaw(bytes, startByte) {
+    let pos = (startByte || 0) * 8;
+    function getBit() {
+      const byteIndex = pos >>> 3;
+      const bit = (bytes[byteIndex] >>> (pos & 7)) & 1;
+      pos++;
+      return bit;
+    }
+    function getBits(n) {
+      let val = 0;
+      for (let i = 0; i < n; i++) val |= getBit() << i;
+      return val;
+    }
+    function buildHuffman(lengths) {
+      const MAXBITS = 15;
+      const count = new Array(MAXBITS + 1).fill(0);
+      for (const l of lengths) count[l]++;
+      count[0] = 0;
+      const offs = new Array(MAXBITS + 2).fill(0);
+      for (let i = 1; i <= MAXBITS; i++) offs[i + 1] = offs[i] + count[i];
+      const symbols = new Array(lengths.length).fill(0);
+      const offsCopy = offs.slice();
+      for (let i = 0; i < lengths.length; i++) {
+        if (lengths[i] !== 0) symbols[offsCopy[lengths[i]]++] = i;
+      }
+      return { count, symbols };
+    }
+    function decodeSymbol(table) {
+      let code = 0, first = 0, index = 0;
+      for (let len = 1; len <= 15; len++) {
+        code |= getBit();
+        const cnt = table.count[len];
+        if (code - first < cnt) return table.symbols[index + (code - first)];
+        index += cnt;
+        first += cnt;
+        first <<= 1;
+        code <<= 1;
+      }
+      throw new Error('invalid huffman code');
+    }
+    const LEN_BASE = [3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258];
+    const LEN_EXTRA = [0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
+    const DIST_BASE = [1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
+    const DIST_EXTRA = [0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
+    const CLC_ORDER = [16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15];
+    let out = [];
+    let final = 0;
+    do {
+      final = getBit();
+      const type = getBits(2);
+      if (type === 0) {
+        pos = (pos + 7) & ~7;
+        const byteIndex = pos >>> 3;
+        const len = bytes[byteIndex] | (bytes[byteIndex + 1] << 8);
+        pos += 32;
+        const dataStart = pos >>> 3;
+        for (let i = 0; i < len; i++) out.push(bytes[dataStart + i]);
+        pos = (dataStart + len) * 8;
+      } else if (type === 1 || type === 2) {
+        let litTable, distTable;
+        if (type === 1) {
+          const litLengths = new Array(288);
+          for (let i = 0; i <= 143; i++) litLengths[i] = 8;
+          for (let i = 144; i <= 255; i++) litLengths[i] = 9;
+          for (let i = 256; i <= 279; i++) litLengths[i] = 7;
+          for (let i = 280; i <= 287; i++) litLengths[i] = 8;
+          const distLengths = new Array(30).fill(5);
+          litTable = buildHuffman(litLengths);
+          distTable = buildHuffman(distLengths);
+        } else {
+          const hlit = getBits(5) + 257;
+          const hdist = getBits(5) + 1;
+          const hclen = getBits(4) + 4;
+          const clcLengths = new Array(19).fill(0);
+          for (let i = 0; i < hclen; i++) clcLengths[CLC_ORDER[i]] = getBits(3);
+          const clcTable = buildHuffman(clcLengths);
+          const lengths = [];
+          while (lengths.length < hlit + hdist) {
+            const sym = decodeSymbol(clcTable);
+            if (sym < 16) {
+              lengths.push(sym);
+            } else if (sym === 16) {
+              const rep = getBits(2) + 3;
+              const prev = lengths[lengths.length - 1];
+              for (let i = 0; i < rep; i++) lengths.push(prev);
+            } else if (sym === 17) {
+              const rep = getBits(3) + 3;
+              for (let i = 0; i < rep; i++) lengths.push(0);
+            } else {
+              const rep = getBits(7) + 11;
+              for (let i = 0; i < rep; i++) lengths.push(0);
+            }
+          }
+          litTable = buildHuffman(lengths.slice(0, hlit));
+          distTable = buildHuffman(lengths.slice(hlit, hlit + hdist));
+        }
+        while (true) {
+          const sym = decodeSymbol(litTable);
+          if (sym < 256) {
+            out.push(sym);
+          } else if (sym === 256) {
+            break;
+          } else {
+            const li = sym - 257;
+            const len = LEN_BASE[li] + getBits(LEN_EXTRA[li]);
+            const dsym = decodeSymbol(distTable);
+            const dist = DIST_BASE[dsym] + getBits(DIST_EXTRA[dsym]);
+            const start = out.length - dist;
+            for (let i = 0; i < len; i++) out.push(out[start + i]);
+          }
+        }
+      } else {
+        throw new Error('invalid block type');
+      }
+    } while (!final);
+    return Uint8Array.from(out);
+  }
+  function inflateZlib(bytes) { return inflateRaw(bytes, 2); }
+
+  function readZipEntries(buf) {
+    let eocdOffset = -1;
+    for (let i = buf.length - 22; i >= 0; i--) {
+      if (buf[i] === 0x50 && buf[i+1] === 0x4b && buf[i+2] === 0x05 && buf[i+3] === 0x06) { eocdOffset = i; break; }
+    }
+    if (eocdOffset < 0) throw new Error('not a valid zip archive');
+    const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    const cdOffset = dv.getUint32(eocdOffset + 16, true);
+    const cdCount = dv.getUint16(eocdOffset + 10, true);
+    const entries = {};
+    let ptr = cdOffset;
+    for (let i = 0; i < cdCount; i++) {
+      const compMethod = dv.getUint16(ptr + 10, true);
+      const compSize = dv.getUint32(ptr + 20, true);
+      const nameLen = dv.getUint16(ptr + 28, true);
+      const extraLen = dv.getUint16(ptr + 30, true);
+      const commentLen = dv.getUint16(ptr + 32, true);
+      const lho = dv.getUint32(ptr + 42, true);
+      const name = new TextDecoder('utf-8').decode(buf.subarray(ptr + 46, ptr + 46 + nameLen));
+      entries[name] = { offset: lho, compMethod, compSize };
+      ptr += 46 + nameLen + extraLen + commentLen;
+    }
+    return {
+      names: Object.keys(entries),
+      read(name) {
+        const e = entries[name];
+        if (!e) return null;
+        const lNameLen = dv.getUint16(e.offset + 26, true);
+        const lExtraLen = dv.getUint16(e.offset + 28, true);
+        const dataStart = e.offset + 30 + lNameLen + lExtraLen;
+        const raw = buf.subarray(dataStart, dataStart + e.compSize);
+        return e.compMethod === 0 ? raw : inflateRaw(raw, 0);
+      }
+    };
+  }
+
+  function xmlToText(xml) {
+    return xml
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n\s*\n+/g, '\n')
+      .trim();
+  }
+
+  function extractDocxText(bytes) {
+    const zip = readZipEntries(bytes);
+    const docXmlBytes = zip.read('word/document.xml');
+    if (!docXmlBytes) throw new Error('word/document.xml not found — not a valid .docx');
+    let xml = new TextDecoder('utf-8').decode(docXmlBytes);
+    xml = xml.replace(/<\/w:p>/g, '\n').replace(/<w:tab\/>/g, '\t').replace(/<w:br\/>/g, '\n');
+    return xmlToText(xml);
+  }
+
+  function extractXlsxText(bytes) {
+    const zip = readZipEntries(bytes);
+    let sharedStrings = [];
+    const sstBytes = zip.read('xl/sharedStrings.xml');
+    if (sstBytes) {
+      const sstXml = new TextDecoder('utf-8').decode(sstBytes);
+      const siRe = /<si>([\s\S]*?)<\/si>/g;
+      let m;
+      while ((m = siRe.exec(sstXml))) {
+        const text = m[1].replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+        sharedStrings.push(text);
+      }
+    }
+    const sheetNames = zip.names.filter(n => /^xl\/worksheets\/sheet\d+\.xml$/.test(n)).sort();
+    if (!sheetNames.length) throw new Error('no worksheets found — not a valid .xlsx');
+    const sheetsOut = [];
+    for (const sheetName of sheetNames) {
+      const sheetXml = new TextDecoder('utf-8').decode(zip.read(sheetName));
+      const rows = [];
+      const rowRe = /<row[^>]*>([\s\S]*?)<\/row>/g;
+      let rowMatch;
+      while ((rowMatch = rowRe.exec(sheetXml))) {
+        const cells = [];
+        const cellRe = /<c[^>]*r="([A-Z]+)\d+"[^>]*?(?:\st="([^"]*)")?[^>]*>(?:<v>([\s\S]*?)<\/v>)?<\/c>/g;
+        let cellMatch;
+        while ((cellMatch = cellRe.exec(rowMatch[1]))) {
+          const col = cellMatch[1];
+          const type = cellMatch[2];
+          const raw = cellMatch[3];
+          let value = '';
+          if (raw !== undefined) {
+            value = type === 's' ? (sharedStrings[parseInt(raw, 10)] || '') : raw;
+          }
+          cells.push({ col, value });
+        }
+        if (cells.length) {
+          const maxColIdx = cells.reduce((m, c) => Math.max(m, colToIndex(c.col)), 0);
+          const line = new Array(maxColIdx + 1).fill('');
+          cells.forEach(c => { line[colToIndex(c.col)] = c.value; });
+          rows.push(line.join('\t'));
+        }
+      }
+      if (rows.length) sheetsOut.push('[Sheet: ' + sheetName.match(/sheet(\d+)/)[0] + ']\n' + rows.join('\n'));
+    }
+    return sheetsOut.join('\n\n');
+  }
+  function colToIndex(col) {
+    let idx = 0;
+    for (let i = 0; i < col.length; i++) idx = idx * 26 + (col.charCodeAt(i) - 64);
+    return idx - 1;
+  }
+
+  function extractPdfText(bytes) {
+    const latin1 = Array.from(bytes).map(b => String.fromCharCode(b)).join('');
+    const blocks = [];
+    const streamRe = /stream\r?\n/g;
+    let m;
+    while ((m = streamRe.exec(latin1))) {
+      const dataStart = m.index + m[0].length;
+      const endIdx = latin1.indexOf('endstream', dataStart);
+      if (endIdx < 0) break;
+      let dataEnd = endIdx;
+      while (dataEnd > dataStart && (bytes[dataEnd - 1] === 0x0a || bytes[dataEnd - 1] === 0x0d)) dataEnd--;
+      const streamBytes = bytes.subarray(dataStart, dataEnd);
+      let decoded = null;
+      if (streamBytes.length > 2 && streamBytes[0] === 0x78) {
+        try { decoded = inflateZlib(streamBytes); } catch (e) { decoded = null; }
+      } else {
+        decoded = streamBytes;
+      }
+      if (decoded) {
+        const s = Array.from(decoded).map(b => String.fromCharCode(b)).join('');
+        if (s.includes('BT') && s.includes('Tj')) blocks.push(s);
+      }
+      streamRe.lastIndex = endIdx + 9;
+    }
+
+    function parseString(str, i) {
+      let depth = 1, out = '';
+      i++;
+      while (i < str.length && depth > 0) {
+        const c = str[i];
+        if (c === '\\') {
+          const n = str[i + 1];
+          if (n === 'n') { out += '\n'; i += 2; }
+          else if (n === 'r') { out += '\r'; i += 2; }
+          else if (n === 't') { out += '\t'; i += 2; }
+          else if (n === '(' || n === ')' || n === '\\') { out += n; i += 2; }
+          else if (n >= '0' && n <= '7') {
+            let oct = '';
+            let j = i + 1;
+            while (oct.length < 3 && str[j] >= '0' && str[j] <= '7') { oct += str[j]; j++; }
+            out += String.fromCharCode(parseInt(oct, 8) & 0xff);
+            i = j;
+          } else { out += n; i += 2; }
+        } else if (c === '(') { depth++; out += c; i++; }
+        else if (c === ')') { depth--; i++; if (depth > 0) out += c; }
+        else { out += c; i++; }
+      }
+      return { text: out, next: i };
+    }
+
+    const pageTexts = [];
+    for (const block of blocks) {
+      const lineParts = [];
+      let cur = [];
+      let i = 0;
+      while (i < block.length) {
+        if (block[i] === '(') {
+          const { text, next } = parseString(block, i);
+          const printable = text.replace(/[^\x20-\x7e]/g, '').length;
+          if (text.length === 0 || printable / text.length > 0.6) cur.push(text);
+          i = next;
+        } else if (block.startsWith('ET', i) || block.startsWith('Td', i) || block.startsWith('TD', i) || block.startsWith("T*", i)) {
+          if (cur.length) { lineParts.push(cur.join('').replace(/[ \t]+/g, ' ').trimEnd()); cur = []; }
+          i += 2;
+        } else {
+          i++;
+        }
+      }
+      if (cur.length) lineParts.push(cur.join('').replace(/[ \t]+/g, ' ').trimEnd());
+      const text = lineParts.filter(l => l.trim().length).join('\n');
+      if (text.trim()) pageTexts.push(text);
+    }
+    return pageTexts.join('\n\n[page break]\n\n');
+  }
+
+  const MAX_EXTRACT_CHARS = 15000;
+  function truncateText(text) {
+    if (text.length <= MAX_EXTRACT_CHARS) return text;
+    return text.slice(0, MAX_EXTRACT_CHARS) + '\n\n[...truncated, ' + (text.length - MAX_EXTRACT_CHARS) + ' more characters omitted]';
+  }
+
+  function fileIconLabel(ext) {
+    if (ext === 'pdf') return 'PDF';
+    if (ext === 'docx' || ext === 'doc') return 'DOC';
+    if (ext === 'xlsx' || ext === 'xls') return 'XLS';
+    return 'FILE';
+  }
+
+  function renderAttachments() {
+    attachmentsBar.textContent = '';
+    for (const att of attachments) {
+      attachmentsBar.appendChild(buildChip(att, true));
+    }
+    renderQuickActions();
+  }
+
+  function buildChip(att, removable) {
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (att.status === 'error' ? ' error' : '');
+    if (att.kind === 'image' && att.dataUrl) {
+      const img = document.createElement('img');
+      img.className = 'thumb';
+      img.src = att.dataUrl;
+      img.alt = att.name;
+      chip.appendChild(img);
+    } else {
+      const icon = document.createElement('div');
+      icon.className = 'icon';
+      icon.textContent = fileIconLabel(att.ext);
+      chip.appendChild(icon);
+    }
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'name';
+    nameEl.textContent = att.name;
+    nameEl.title = att.name;
+    meta.appendChild(nameEl);
+    const sub = document.createElement('div');
+    sub.className = 'sub';
+    sub.textContent = att.status === 'reading' ? 'Reading…' : att.status === 'error' ? att.errorMsg : (att.kind === 'image' ? 'Image' : 'Attached');
+    meta.appendChild(sub);
+    chip.appendChild(meta);
+    if (att.status === 'reading') {
+      const spinner = document.createElement('div');
+      spinner.className = 'spinner';
+      chip.appendChild(spinner);
+    } else if (removable) {
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'remove';
+      removeBtn.textContent = '×';
+      removeBtn.addEventListener('click', () => {
+        attachments = attachments.filter(a => a.id !== att.id);
+        renderAttachments();
+      });
+      chip.appendChild(removeBtn);
+    }
+    return chip;
+  }
+
+  const MAX_FILE_BYTES = 20 * 1024 * 1024;
+
+  function handleFiles(fileList) {
+    for (const file of Array.from(fileList)) {
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      const isImage = file.type.startsWith('image/');
+      const att = {
+        id: ++attachmentSeq,
+        file,
+        name: file.name,
+        ext,
+        kind: isImage ? 'image' : 'doc',
+        status: 'reading',
+        dataUrl: null,
+        text: '',
+        errorMsg: ''
+      };
+      attachments.push(att);
+      renderAttachments();
+
+      if (file.size > MAX_FILE_BYTES) {
+        att.status = 'error';
+        att.errorMsg = 'Too large (max 20MB)';
+        renderAttachments();
+        continue;
+      }
+
+      if (isImage) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          att.dataUrl = reader.result;
+          att.status = 'ready';
+          renderAttachments();
+        };
+        reader.onerror = () => {
+          att.status = 'error';
+          att.errorMsg = 'Could not read image';
+          renderAttachments();
+        };
+        reader.readAsDataURL(file);
+        continue;
+      }
+
+      if (ext === 'doc' || ext === 'xls') {
+        att.status = 'error';
+        att.errorMsg = 'Legacy .' + ext + ' not supported — save as .' + (ext === 'doc' ? 'docx' : 'xlsx');
+        renderAttachments();
+        continue;
+      }
+
+      file.arrayBuffer().then(buf => {
+        const bytes = new Uint8Array(buf);
+        try {
+          let text;
+          if (ext === 'docx') text = extractDocxText(bytes);
+          else if (ext === 'xlsx') text = extractXlsxText(bytes);
+          else if (ext === 'pdf') text = extractPdfText(bytes);
+          else throw new Error('Unsupported file type');
+
+          if (!text || !text.trim()) {
+            att.status = 'error';
+            att.errorMsg = ext === 'pdf' ? 'No text found (scanned/image PDF?)' : 'No text found in file';
+          } else {
+            att.text = truncateText(text);
+            att.status = 'ready';
+          }
+        } catch (err) {
+          att.status = 'error';
+          att.errorMsg = 'Could not read file';
+        }
+        renderAttachments();
+      }).catch(() => {
+        att.status = 'error';
+        att.errorMsg = 'Could not read file';
+        renderAttachments();
+      });
+    }
+  }
+
+  attachBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    handleFiles(fileInput.files);
+    fileInput.value = '';
+  });
+
+  function renderInto(container, text) {
+    container.textContent = '';
+    const blockRe = /```([\s\S]*?)```/g;
+    let lastIndex = 0;
+    let match;
+    const appendInline = (segment, parent) => {
+      const inlineRe = /`([^`]+)`/g;
+      let last = 0;
+      let m;
+      while ((m = inlineRe.exec(segment))) {
+        if (m.index > last) parent.appendChild(document.createTextNode(segment.slice(last, m.index)));
+        const codeEl = document.createElement('code');
+        codeEl.textContent = m[1];
+        parent.appendChild(codeEl);
+        last = inlineRe.lastIndex;
+      }
+      if (last < segment.length) parent.appendChild(document.createTextNode(segment.slice(last)));
+    };
+    while ((match = blockRe.exec(text))) {
+      if (match.index > lastIndex) appendInline(text.slice(lastIndex, match.index), container);
+      const pre = document.createElement('pre');
+      const code = document.createElement('code');
+      code.textContent = match[1];
+      pre.appendChild(code);
+      container.appendChild(pre);
+      lastIndex = blockRe.lastIndex;
+    }
+    if (lastIndex < text.length) appendInline(text.slice(lastIndex), container);
+  }
+
+  let historyRestored = false;
+  function showApp() {
+    const hasKey = !!apiKey;
+    setupScreen.style.display = hasKey ? 'none' : 'flex';
+    thread.style.display = hasKey ? 'flex' : 'none';
+    composerForm.style.display = hasKey ? 'flex' : 'none';
+    statusDot.classList.toggle('ready', hasKey);
+    if (hasKey && !historyRestored) {
+      historyRestored = true;
+      restoreHistory();
+    }
+  }
+
+  function addMessage(role, text, sentAttachments) {
+    if (emptyState) { emptyState.remove(); emptyState = null; }
+    const wrap = document.createElement('div');
+    wrap.className = 'msg ' + role;
+    const roleEl = document.createElement('div');
+    roleEl.className = 'role';
+    roleEl.textContent = role === 'user' ? 'YOU' : 'AI';
+    const col = document.createElement('div');
+    col.style.flex = '1';
+    col.style.minWidth = '0';
+    if (sentAttachments && sentAttachments.length) {
+      const bar = document.createElement('div');
+      bar.className = 'msg-attachments';
+      for (const att of sentAttachments) bar.appendChild(buildChip(att, false));
+      col.appendChild(bar);
+    }
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    renderInto(bubble, text);
+    col.appendChild(bubble);
+    wrap.appendChild(roleEl);
+    wrap.appendChild(col);
+    thread.appendChild(wrap);
+    thread.scrollTop = thread.scrollHeight;
+    return bubble;
+  }
+
+  function autoGrow() {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+  }
+  input.addEventListener('input', () => { autoGrow(); renderQuickActions(); });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      composerForm.requestSubmit();
+    }
+  });
+
+  saveKeyBtn.addEventListener('click', () => {
+    const val = apiKeyInput.value.trim();
+    if (!val) return;
+    apiKey = val;
+    sessionStorage.setItem('openrouter_key', apiKey);
+    apiKeyInput.value = '';
+    showApp();
+  });
+
+  keyBtn.addEventListener('click', () => {
+    apiKey = '';
+    sessionStorage.removeItem('openrouter_key');
+    showApp();
+  });
+
+  clearBtn.addEventListener('click', () => {
+    messages = [];
+    attachments = [];
+    renderAttachments();
+    localStorage.removeItem(HISTORY_KEY);
+    thread.textContent = '';
+    const div = document.createElement('div');
+    div.className = 'empty';
+    div.id = 'emptyState';
+    div.textContent = 'Ask anything, or attach a file. A free model is picked automatically.';
+    thread.appendChild(div);
+    emptyState = div;
+  });
+
+  async function sendMessage(text) {
+    const readyAttachments = attachments.filter(a => a.status === 'ready');
+    const docAttachments = readyAttachments.filter(a => a.kind === 'doc');
+    const imageAttachments = readyAttachments.filter(a => a.kind === 'image');
+    const pool = imageAttachments.length ? visionPool : textPool;
+
+    let content;
+    if (imageAttachments.length) {
+      content = [];
+      let textPart = text;
+      for (const doc of docAttachments) {
+        textPart += (textPart ? '\n\n' : '') + '[Attached file: ' + doc.name + ']\n' + doc.text;
+      }
+      if (textPart) content.push({ type: 'text', text: textPart });
+      for (const img of imageAttachments) {
+        content.push({ type: 'image_url', image_url: { url: img.dataUrl } });
+      }
+    } else {
+      content = text;
+      for (const doc of docAttachments) {
+        content += (content ? '\n\n' : '') + '[Attached file: ' + doc.name + ']\n' + doc.text;
+      }
+    }
+
+    messages.push({ role: 'user', content });
+    addMessage('user', text, readyAttachments);
+    attachments = [];
+    renderAttachments();
+    input.value = '';
+    autoGrow();
+
+    busy = true;
+    setSendingUi(true);
+    const assistantBubble = addMessage('assistant', '');
+    const cursor = document.createElement('span');
+    cursor.className = 'cursor';
+    assistantBubble.appendChild(cursor);
+
+    abortController = new AbortController();
+    let fullText = '';
+    let badgeSet = false;
+    try {
+      const { model, truncated } = await fetchChatCompletion(
+        pool,
+        { messages: messages, stream: true, max_tokens: 2048, reasoning: { enabled: false } },
+        abortController.signal,
+        (delta, candidate) => {
+          if (!badgeSet) { updateModelBadge(candidate.name); badgeSet = true; }
+          fullText += delta;
+          renderInto(assistantBubble, fullText);
+          assistantBubble.appendChild(cursor);
+          thread.scrollTop = thread.scrollHeight;
+        }
+      );
+
+      cursor.remove();
+      if (!fullText) fullText = '(empty response)';
+      if (truncated) fullText += '\n\n[response cut short — the model provider hit a temporary error]';
+      renderInto(assistantBubble, fullText);
+      addMsgTools(assistantBubble, fullText);
+      messages.push({ role: 'assistant', content: fullText });
+      saveHistory();
+    } catch (err) {
+      cursor.remove();
+      if (err.name === 'AbortError') {
+        if (!fullText) fullText = '(stopped)';
+        renderInto(assistantBubble, fullText);
+        addMsgTools(assistantBubble, fullText);
+        messages.push({ role: 'assistant', content: fullText });
+        saveHistory();
+      } else {
+        assistantBubble.classList.add('error');
+        assistantBubble.textContent = 'Error: ' + err.message;
+        messages.pop();
+      }
+    } finally {
+      busy = false;
+      abortController = null;
+      setSendingUi(false);
+      input.focus();
+    }
+  }
+
+  function setSendingUi(isSending) {
+    sendBtn.textContent = isSending ? '■' : '↑';
+    sendBtn.classList.toggle('stop', isSending);
+    sendBtn.title = isSending ? 'Stop generating' : 'Send';
+    attachBtn.disabled = isSending;
+  }
+
+  sendBtn.addEventListener('click', (e) => {
+    if (busy && abortController) {
+      e.preventDefault();
+      abortController.abort();
+    }
+  });
+
+  function addMsgTools(bubble, text) {
+    const tools = document.createElement('div');
+    tools.className = 'msg-tools';
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.textContent = 'Copy';
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(text).then(() => {
+        copyBtn.textContent = 'Copied';
+        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1200);
+      });
+    });
+    tools.appendChild(copyBtn);
+    bubble.parentElement.appendChild(tools);
+  }
+
+  const HISTORY_KEY = 'openrouter_chat_history';
+  function saveHistory() {
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(messages));
+    } catch (e) {
+      // storage full or unavailable — history simply won't persist
+    }
+  }
+
+  function renderStoredMessage(msg) {
+    if (typeof msg.content === 'string') {
+      const b = addMessage(msg.role, msg.content);
+      if (msg.role === 'assistant') addMsgTools(b, msg.content);
+      return;
+    }
+    const textParts = msg.content.filter(p => p.type === 'text').map(p => p.text).join('\n\n');
+    const b = addMessage(msg.role, textParts);
+    const images = msg.content.filter(p => p.type === 'image_url');
+    for (const img of images) {
+      const el = document.createElement('img');
+      el.className = 'img-inline';
+      el.src = img.image_url.url;
+      b.parentElement.insertBefore(el, b);
+    }
+    if (msg.role === 'assistant') addMsgTools(b, textParts);
+  }
+
+  function restoreHistory() {
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      if (!raw) return;
+      const stored = JSON.parse(raw);
+      if (!Array.isArray(stored) || !stored.length) return;
+      messages = stored;
+      for (const msg of stored) renderStoredMessage(msg);
+    } catch (e) {
+      // corrupt/unreadable history — start fresh
+    }
+  }
+
+  const QUICK_ACTIONS = [
+    { label: 'Summarize', prompt: 'Summarize the attached file(s) in a few concise bullet points.' },
+    { label: 'Key points', prompt: 'Extract the key facts and figures from the attached file(s).' },
+    { label: 'Explain simply', prompt: 'Explain the attached file(s) in simple, plain language.' }
+  ];
+  const quickActions = $('quickActions');
+  function renderQuickActions() {
+    quickActions.textContent = '';
+    const hasDoc = attachments.some(a => a.kind === 'doc' && a.status === 'ready');
+    if (!hasDoc || input.value.trim()) return;
+    for (const qa of QUICK_ACTIONS) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = qa.label;
+      btn.addEventListener('click', () => {
+        if (busy) return;
+        input.value = qa.prompt;
+        composerForm.requestSubmit();
+      });
+      quickActions.appendChild(btn);
+    }
+  }
+
+  composerForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (busy) return;
+    const text = input.value.trim();
+    const hasReadyAttachment = attachments.some(a => a.status === 'ready');
+    const isProcessing = attachments.some(a => a.status === 'reading');
+    if (!text && !hasReadyAttachment) return;
+    if (isProcessing) return;
+    sendMessage(text);
+  });
+
+  showApp();
+})();
+</script>
