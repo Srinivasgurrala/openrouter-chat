@@ -256,6 +256,9 @@
     text-align: center;
     color: var(--text-dim);
     font-size: 13.5px;
+    white-space: pre-line;
+    line-height: 1.6;
+    max-width: 320px;
   }
 
   .msg {
@@ -374,6 +377,34 @@
     flex-shrink: 0;
   }
   button.attach-btn:hover { border-color: var(--accent); color: var(--text); }
+
+  button.search-btn {
+    background: var(--panel);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    height: 40px;
+    padding: 0 12px;
+    border-radius: 9px;
+    font-size: 12.5px;
+    cursor: pointer;
+    font-family: inherit;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  button.search-btn:hover { border-color: var(--accent); color: var(--text); }
+  button.search-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--text); }
+
+  .msg-sources {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    font-size: 11.5px;
+  }
+  .msg-sources .sources-label { color: var(--text-dim); margin-bottom: 4px; }
+  .msg-sources ol { margin: 0; padding-left: 18px; }
+  .msg-sources li { margin-bottom: 3px; }
+  .msg-sources a { color: var(--accent); text-decoration: none; }
+  .msg-sources a:hover { text-decoration: underline; }
 
   .attachments-bar {
     display: flex;
@@ -753,7 +784,9 @@
   </div>
 
   <div id="thread" class="thread" style="display:none;">
-    <div class="empty" id="emptyState">Ask anything, or attach a file. A free model is picked automatically.</div>
+    <div class="empty" id="emptyState">Ask anything, or attach a file. A free model is picked automatically.
+
+Try /model, /remember, or /memories — or toggle 🌐 Search for live web results.</div>
   </div>
 
   <form id="composer" class="composer" style="display:none;">
@@ -762,6 +795,7 @@
       <div id="attachmentsBar" class="attachments-bar"></div>
       <div class="composer-row">
         <button type="button" class="attach-btn" id="attachBtn" title="Attach files">+</button>
+        <button type="button" class="search-btn" id="searchToggleBtn" title="Search the web for this and future messages (small per-search cost, billed to your key)">🌐 Search</button>
         <textarea id="input" rows="1" placeholder="Message the model..."></textarea>
         <button type="submit" class="send" id="sendBtn">↑</button>
       </div>
@@ -901,6 +935,7 @@
         let buffer = '';
         let gotContent = false;
         let streamErr = null;
+        const annotations = [];
 
         outer: while (true) {
           const chunk = await reader.read();
@@ -916,8 +951,9 @@
             let json;
             try { json = JSON.parse(payload); } catch (e) { continue; }
             if (json.error) { streamErr = json.error; break outer; }
-            const delta = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content;
-            if (delta) { gotContent = true; onDelta(delta, candidate); }
+            const d = json.choices && json.choices[0] && json.choices[0].delta;
+            if (d && d.content) { gotContent = true; onDelta(d.content, candidate); }
+            if (d && Array.isArray(d.annotations)) annotations.push(...d.annotations);
           }
         }
 
@@ -925,7 +961,7 @@
           lastErr = new Error(streamErr.message || 'Upstream provider error');
           continue;
         }
-        return { model: candidate, truncated: !!streamErr };
+        return { model: candidate, truncated: !!streamErr, annotations };
       } catch (e) {
         if (e.name === 'AbortError') throw e;
         lastErr = e;
@@ -1248,6 +1284,368 @@
   function truncateText(text) {
     if (text.length <= MAX_EXTRACT_CHARS) return text;
     return text.slice(0, MAX_EXTRACT_CHARS) + '\n\n[...truncated, ' + (text.length - MAX_EXTRACT_CHARS) + ' more characters omitted]';
+  }
+
+  // ---------- ZIP writer + DOCX/PPTX export (content creation) ----------
+  // Same rationale as the inflate code above: no libraries are reachable
+  // inside the Artifact's CSP, so Office files are assembled by hand. Using
+  // the zip "stored" (uncompressed) method sidesteps needing a DEFLATE
+  // *encoder* (we only ever needed a decoder to read attachments).
+  let crc32Table = null;
+  function crc32(bytes) {
+    if (!crc32Table) {
+      crc32Table = new Uint32Array(256);
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+        crc32Table[n] = c >>> 0;
+      }
+    }
+    let crc = 0xffffffff;
+    for (let i = 0; i < bytes.length; i++) crc = crc32Table[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
+    return (crc ^ 0xffffffff) >>> 0;
+  }
+
+  const ZIP_DOS_TIME = 0;
+  const ZIP_DOS_DATE = ((2024 - 1980) << 9) | (1 << 5) | 1;
+
+  function buildZip(entries) {
+    const encoder = new TextEncoder();
+    const localChunks = [];
+    const centralChunks = [];
+    let offset = 0;
+
+    for (const { name, data } of entries) {
+      const nameBytes = encoder.encode(name);
+      const crc = crc32(data);
+      const size = data.length;
+
+      const local = new Uint8Array(30 + nameBytes.length);
+      const lv = new DataView(local.buffer);
+      lv.setUint32(0, 0x04034b50, true);
+      lv.setUint16(4, 20, true);
+      lv.setUint16(6, 0, true);
+      lv.setUint16(8, 0, true);
+      lv.setUint16(10, ZIP_DOS_TIME, true);
+      lv.setUint16(12, ZIP_DOS_DATE, true);
+      lv.setUint32(14, crc, true);
+      lv.setUint32(18, size, true);
+      lv.setUint32(22, size, true);
+      lv.setUint16(26, nameBytes.length, true);
+      lv.setUint16(28, 0, true);
+      local.set(nameBytes, 30);
+      localChunks.push(local, data);
+
+      const central = new Uint8Array(46 + nameBytes.length);
+      const cv = new DataView(central.buffer);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true);
+      cv.setUint16(6, 20, true);
+      cv.setUint16(8, 0, true);
+      cv.setUint16(10, 0, true);
+      cv.setUint16(12, ZIP_DOS_TIME, true);
+      cv.setUint16(14, ZIP_DOS_DATE, true);
+      cv.setUint32(16, crc, true);
+      cv.setUint32(20, size, true);
+      cv.setUint32(24, size, true);
+      cv.setUint16(28, nameBytes.length, true);
+      cv.setUint32(42, offset, true);
+      central.set(nameBytes, 46);
+      centralChunks.push(central);
+
+      offset += local.length + data.length;
+    }
+
+    const localTotalLen = localChunks.reduce((s, c) => s + c.length, 0);
+    const centralTotalLen = centralChunks.reduce((s, c) => s + c.length, 0);
+    const eocd = new Uint8Array(22);
+    const ev = new DataView(eocd.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(8, entries.length, true);
+    ev.setUint16(10, entries.length, true);
+    ev.setUint32(12, centralTotalLen, true);
+    ev.setUint32(16, localTotalLen, true);
+
+    const out = new Uint8Array(localTotalLen + centralTotalLen + eocd.length);
+    let pos = 0;
+    for (const c of localChunks) { out.set(c, pos); pos += c.length; }
+    for (const c of centralChunks) { out.set(c, pos); pos += c.length; }
+    out.set(eocd, pos);
+    return out;
+  }
+
+  function xmlEscape(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+  }
+
+  function stripInlineMarkdown(s) {
+    return s
+      .replace(/\*\*([^*\n]+)\*\*/g, '$1')
+      .replace(/`([^`\n]+)`/g, '$1')
+      .replace(/\[([^\]\n]+)\]\([^)\s]+\)/g, '$1')
+      .replace(/(\*|_)([^*_\n]+)\1/g, '$2');
+  }
+
+  // Parses assistant markdown text into a flat block list for export, reusing
+  // the same fence/heading/list detection as the on-screen renderer.
+  function extractExportBlocks(text) {
+    const blocks = [];
+    function pushMarkdown(mdText) {
+      const lines = mdText.split('\n');
+      let paraLines = [];
+      const flush = () => {
+        if (paraLines.length) { blocks.push({ type: 'p', text: stripInlineMarkdown(paraLines.join(' ').trim()) }); paraLines = []; }
+      };
+      for (const line of lines) {
+        const heading = /^(#{1,6})\s+(.*)$/.exec(line);
+        const ul = /^\s*[-*]\s+(.*)$/.exec(line);
+        const ol = /^\s*\d+\.\s+(.*)$/.exec(line);
+        if (line.trim() === '') { flush(); continue; }
+        if (heading) { flush(); blocks.push({ type: 'h' + Math.min(heading[1].length, 3), text: stripInlineMarkdown(heading[2]) }); continue; }
+        if (ul) { flush(); blocks.push({ type: 'li', text: stripInlineMarkdown(ul[1]) }); continue; }
+        if (ol) { flush(); blocks.push({ type: 'li', text: stripInlineMarkdown(ol[1]) }); continue; }
+        if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) { flush(); continue; }
+        if (/^>\s?/.test(line)) { flush(); blocks.push({ type: 'p', text: stripInlineMarkdown(line.replace(/^>\s?/, '')) }); continue; }
+        paraLines.push(line);
+      }
+      flush();
+    }
+    const blockRe = /```([A-Za-z0-9_+-]*)\n?([\s\S]*?)```/g;
+    let lastIndex = 0, match;
+    while ((match = blockRe.exec(text))) {
+      if (match.index > lastIndex) pushMarkdown(text.slice(lastIndex, match.index));
+      blocks.push({ type: 'code', text: match[2].replace(/\n$/, '') });
+      lastIndex = blockRe.lastIndex;
+    }
+    if (lastIndex < text.length) pushMarkdown(text.slice(lastIndex));
+    return blocks;
+  }
+
+  function buildDocxParts(blocks) {
+    const paras = [];
+    for (const b of blocks) {
+      if (b.type === 'code') {
+        for (const line of b.text.split('\n')) {
+          paras.push('<w:p><w:pPr><w:pStyle w:val="Code"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/></w:rPr><w:t xml:space="preserve">' + xmlEscape(line || ' ') + '</w:t></w:r></w:p>');
+        }
+        continue;
+      }
+      const t = xmlEscape(b.text);
+      if (b.type === 'h1' || b.type === 'h2' || b.type === 'h3') {
+        const style = b.type === 'h1' ? 'Heading1' : b.type === 'h2' ? 'Heading2' : 'Heading3';
+        paras.push('<w:p><w:pPr><w:pStyle w:val="' + style + '"/></w:pPr><w:r><w:t xml:space="preserve">' + t + '</w:t></w:r></w:p>');
+      } else if (b.type === 'li') {
+        paras.push('<w:p><w:pPr><w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t xml:space="preserve">' + t + '</w:t></w:r></w:p>');
+      } else {
+        paras.push('<w:p><w:r><w:t xml:space="preserve">' + t + '</w:t></w:r></w:p>');
+      }
+    }
+
+    const documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+      '<w:body>' + paras.join('') +
+      '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body></w:document>';
+
+    const stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+      '<w:docDefaults><w:rPrDefault><w:rPr><w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults>' +
+      '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="240" w:after="120"/></w:pPr><w:rPr><w:b/><w:sz w:val="32"/></w:rPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="200" w:after="100"/></w:pPr><w:rPr><w:b/><w:sz w:val="28"/></w:rPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Heading3"><w:name w:val="heading 3"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="160" w:after="80"/></w:pPr><w:rPr><w:b/><w:sz w:val="24"/></w:rPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Code"><w:name w:val="Code"/><w:basedOn w:val="Normal"/><w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/><w:sz w:val="18"/></w:rPr></w:style>' +
+      '</w:styles>';
+
+    const numberingXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+      '<w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/><w:lvlText w:val="&#8226;"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum>' +
+      '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>';
+
+    const contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+      '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
+      '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>' +
+      '</Types>';
+
+    const rootRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+      '</Relationships>';
+
+    const docRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>' +
+      '</Relationships>';
+
+    const enc = new TextEncoder();
+    return [
+      { name: '[Content_Types].xml', data: enc.encode(contentTypes) },
+      { name: '_rels/.rels', data: enc.encode(rootRels) },
+      { name: 'word/document.xml', data: enc.encode(documentXml) },
+      { name: 'word/styles.xml', data: enc.encode(stylesXml) },
+      { name: 'word/numbering.xml', data: enc.encode(numberingXml) },
+      { name: 'word/_rels/document.xml.rels', data: enc.encode(docRels) }
+    ];
+  }
+
+  // blocks -> slides: each H1/H2 starts a new slide; everything else becomes
+  // a bullet on the current slide (code lines included, one bullet per line).
+  function blocksToSlides(blocks, fallbackTitle) {
+    const slides = [];
+    let current = null;
+    for (const b of blocks) {
+      if (b.type === 'h1' || b.type === 'h2') {
+        current = { title: b.text, bullets: [] };
+        slides.push(current);
+      } else if (b.type === 'h3') {
+        if (!current) { current = { title: b.text, bullets: [] }; slides.push(current); }
+        else current.bullets.push(b.text);
+      } else {
+        if (!current) { current = { title: fallbackTitle, bullets: [] }; slides.push(current); }
+        if (b.type === 'code') b.text.split('\n').forEach(line => current.bullets.push(line));
+        else current.bullets.push(b.text);
+      }
+    }
+    if (!slides.length) slides.push({ title: fallbackTitle, bullets: ['(no content)'] });
+    return slides;
+  }
+
+  function buildPptxParts(slides) {
+    const enc = new TextEncoder();
+    const slideXmlFor = (slide) => {
+      const bulletParas = (slide.bullets || []).map(b =>
+        '<a:p><a:pPr marL="228600" indent="-228600"><a:buChar char="&#8226;"/></a:pPr><a:r><a:rPr lang="en-US" dirty="0"/><a:t>' + xmlEscape(b) + '</a:t></a:r></a:p>'
+      ).join('');
+      return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+        '<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">' +
+        '<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>' +
+        '<p:sp><p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr><p:spPr/>' +
+        '<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US" dirty="0"/><a:t>' + xmlEscape(slide.title || '') + '</a:t></a:r></a:p></p:txBody></p:sp>' +
+        '<p:sp><p:nvSpPr><p:cNvPr id="3" name="Body"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr/>' +
+        '<p:txBody><a:bodyPr/><a:lstStyle/>' + (bulletParas || '<a:p><a:endParaRPr lang="en-US"/></a:p>') + '</p:txBody></p:sp>' +
+        '</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>';
+    };
+
+    const slideRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/></Relationships>';
+
+    const slideLayoutXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="title" preserve="1">' +
+      '<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>' +
+      '<p:sp><p:nvSpPr><p:cNvPr id="2" name="Title Placeholder"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="en-US"/></a:p></p:txBody></p:sp>' +
+      '<p:sp><p:nvSpPr><p:cNvPr id="3" name="Body Placeholder"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="en-US"/></a:p></p:txBody></p:sp>' +
+      '</p:spTree></p:cSld><p:clrMapOvr><a:overrideClrMapping bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/></p:clrMapOvr></p:sldLayout>';
+
+    const slideLayoutRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>';
+
+    const slideMasterXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">' +
+      '<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>' +
+      '<p:sp><p:nvSpPr><p:cNvPr id="2" name="Title Placeholder"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr>' +
+      '<p:spPr><a:xfrm><a:off x="457200" y="274638"/><a:ext cx="8229600" cy="1143000"/></a:xfrm></p:spPr>' +
+      '<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US"/><a:t>Title</a:t></a:r></a:p></p:txBody></p:sp>' +
+      '<p:sp><p:nvSpPr><p:cNvPr id="3" name="Body Placeholder"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr>' +
+      '<p:spPr><a:xfrm><a:off x="457200" y="1600200"/><a:ext cx="8229600" cy="4525963"/></a:xfrm></p:spPr>' +
+      '<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US"/><a:t>Body</a:t></a:r></a:p></p:txBody></p:sp>' +
+      '</p:spTree></p:cSld>' +
+      '<p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>' +
+      '<p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/></p:sldLayoutIdLst></p:sldMaster>';
+
+    const slideMasterRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>' +
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/></Relationships>';
+
+    const themeXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Simple"><a:themeElements>' +
+      '<a:clrScheme name="Simple"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1>' +
+      '<a:dk2><a:srgbClr val="1F1F1F"/></a:dk2><a:lt2><a:srgbClr val="EEEEEE"/></a:lt2><a:accent1><a:srgbClr val="6D8CFF"/></a:accent1>' +
+      '<a:accent2><a:srgbClr val="8E8E8E"/></a:accent2><a:accent3><a:srgbClr val="A0A0A0"/></a:accent3><a:accent4><a:srgbClr val="B0B0B0"/></a:accent4>' +
+      '<a:accent5><a:srgbClr val="C0C0C0"/></a:accent5><a:accent6><a:srgbClr val="D0D0D0"/></a:accent6><a:hlink><a:srgbClr val="0563C1"/></a:hlink>' +
+      '<a:folHlink><a:srgbClr val="954F72"/></a:folHlink></a:clrScheme>' +
+      '<a:fontScheme name="Simple"><a:majorFont><a:latin typeface="Calibri"/></a:majorFont><a:minorFont><a:latin typeface="Calibri"/></a:minorFont></a:fontScheme>' +
+      '<a:fmtScheme name="Simple"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst>' +
+      '<a:lnStyleLst><a:ln w="6350"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="12700"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="19050"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst>' +
+      '<a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst>' +
+      '<a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>' +
+      '</a:themeElements></a:theme>';
+
+    const presentationXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">' +
+      '<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rIdMaster1"/></p:sldMasterIdLst>' +
+      '<p:sldIdLst>' + slides.map((s, i) => '<p:sldId id="' + (256 + i) + '" r:id="rId' + (i + 2) + '"/>').join('') + '</p:sldIdLst>' +
+      '<p:sldSz cx="9144000" cy="6858000"/><p:notesSz cx="6858000" cy="9144000"/></p:presentation>';
+
+    const presentationRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rIdMaster1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>' +
+      slides.map((s, i) => '<Relationship Id="rId' + (i + 2) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide' + (i + 1) + '.xml"/>').join('') +
+      '</Relationships>';
+
+    const contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>' +
+      '<Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>' +
+      '<Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>' +
+      '<Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>' +
+      slides.map((s, i) => '<Override PartName="/ppt/slides/slide' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>').join('') +
+      '</Types>';
+
+    const rootRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/></Relationships>';
+
+    const parts = [
+      { name: '[Content_Types].xml', data: enc.encode(contentTypes) },
+      { name: '_rels/.rels', data: enc.encode(rootRels) },
+      { name: 'ppt/presentation.xml', data: enc.encode(presentationXml) },
+      { name: 'ppt/_rels/presentation.xml.rels', data: enc.encode(presentationRels) },
+      { name: 'ppt/slideMasters/slideMaster1.xml', data: enc.encode(slideMasterXml) },
+      { name: 'ppt/slideMasters/_rels/slideMaster1.xml.rels', data: enc.encode(slideMasterRels) },
+      { name: 'ppt/slideLayouts/slideLayout1.xml', data: enc.encode(slideLayoutXml) },
+      { name: 'ppt/slideLayouts/_rels/slideLayout1.xml.rels', data: enc.encode(slideLayoutRels) },
+      { name: 'ppt/theme/theme1.xml', data: enc.encode(themeXml) }
+    ];
+    slides.forEach((s, i) => {
+      parts.push({ name: 'ppt/slides/slide' + (i + 1) + '.xml', data: enc.encode(slideXmlFor(s)) });
+      parts.push({ name: 'ppt/slides/_rels/slide' + (i + 1) + '.xml.rels', data: enc.encode(slideRels) });
+    });
+    return parts;
+  }
+
+  function downloadBytes(bytes, filename, mime) {
+    const blob = new Blob([bytes], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
+  function exportMessageAsDocx(text, titleHint) {
+    const blocks = extractExportBlocks(text);
+    const bytes = buildZip(buildDocxParts(blocks));
+    downloadBytes(bytes, (titleHint || 'chat-export') + '.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  }
+
+  function exportMessageAsPptx(text, titleHint) {
+    const blocks = extractExportBlocks(text);
+    const slides = blocksToSlides(blocks, titleHint || 'Slide 1');
+    const bytes = buildZip(buildPptxParts(slides));
+    downloadBytes(bytes, (titleHint || 'chat-export') + '.pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
   }
 
   function fileIconLabel(ext) {
@@ -1816,7 +2214,7 @@
       const div = document.createElement('div');
       div.className = 'empty';
       div.id = 'emptyState';
-      div.textContent = 'Ask anything, or attach a file. A free model is picked automatically.';
+      div.textContent = 'Ask anything, or attach a file. A free model is picked automatically.\n\nTry /model, /remember, or /memories — or toggle 🌐 Search for live web results.';
       thread.appendChild(div);
       emptyState = div;
     } else {
@@ -2033,6 +2431,56 @@
     notifyLocal('Pinned model: **' + modelOverride.name + '** (`' + modelOverride.id + '`).' + freeNote + '\n\nSay `/model auto` to go back to automatic selection.');
   }
 
+  // ---------- Persistent memory (separate from chat history: facts the model should always know) ----------
+  const MEMORIES_KEY = 'openrouter_memories';
+  let memories = [];
+  try {
+    const raw = localStorage.getItem(MEMORIES_KEY);
+    if (raw) memories = JSON.parse(raw) || [];
+  } catch (e) { memories = []; }
+
+  function saveMemories() {
+    try { localStorage.setItem(MEMORIES_KEY, JSON.stringify(memories)); } catch (e) { /* storage unavailable */ }
+  }
+
+  function handleMemoryCommand(raw) {
+    const isForget = /^\/forget\b/i.test(raw);
+    const arg = raw.replace(/^\/(remember|memories|memory|forget)\b/i, '').trim();
+
+    if (!isForget && /^(memories|memory)$/i.test(raw.replace(/^\//, '').split(/\s+/)[0])) {
+      if (!memories.length) { notifyLocal("No memories saved yet. Say `/remember <fact>` to add one."); return; }
+      const lines = ['**Remembered facts:**'];
+      memories.forEach((m, i) => lines.push((i + 1) + '. ' + m));
+      lines.push('');
+      lines.push('Say `/forget <number or text>` to remove one.');
+      notifyLocal(lines.join('\n'));
+      return;
+    }
+
+    if (isForget) {
+      if (!arg) { notifyLocal('Say `/forget <number or text>` to remove a memory, or `/memories` to see the list.'); return; }
+      const asIndex = parseInt(arg, 10);
+      if (!isNaN(asIndex) && asIndex >= 1 && asIndex <= memories.length && String(asIndex) === arg.trim()) {
+        const removed = memories.splice(asIndex - 1, 1)[0];
+        saveMemories();
+        notifyLocal('Forgot: "' + removed + '"');
+        return;
+      }
+      const idx = memories.findIndex(m => m.toLowerCase().includes(arg.toLowerCase()));
+      if (idx === -1) { notifyLocal("No memory found matching `" + arg + "`. Say `/memories` to see the list."); return; }
+      const removed = memories.splice(idx, 1)[0];
+      saveMemories();
+      notifyLocal('Forgot: "' + removed + '"');
+      return;
+    }
+
+    // /remember <fact>
+    if (!arg) { notifyLocal('Say `/remember <fact>` to save something the model should always know.'); return; }
+    memories.push(arg);
+    saveMemories();
+    notifyLocal('Remembered: "' + arg + '"\n\nThis applies to every chat from now on. Say `/memories` to see everything saved, or `/forget` to remove one.');
+  }
+
   async function runAssistantTurn() {
     const pool = poolForMessages(messages);
     busy = true;
@@ -2046,12 +2494,17 @@
     let fullText = '';
     let badgeSet = false;
     try {
-      const requestMessages = customInstructions.trim()
-        ? [{ role: 'system', content: customInstructions.trim() }].concat(messages)
+      const systemParts = [];
+      if (customInstructions.trim()) systemParts.push(customInstructions.trim());
+      if (memories.length) systemParts.push('Remember these facts about the user:\n' + memories.map(m => '- ' + m).join('\n'));
+      const requestMessages = systemParts.length
+        ? [{ role: 'system', content: systemParts.join('\n\n') }].concat(messages)
         : messages;
-      const { truncated } = await fetchChatCompletion(
+      const requestBody = { messages: requestMessages, stream: true, max_tokens: 2048, reasoning: { enabled: false } };
+      if (webSearchEnabled) requestBody.plugins = [{ id: 'web' }];
+      const { truncated, annotations } = await fetchChatCompletion(
         pool,
-        { messages: requestMessages, stream: true, max_tokens: 2048, reasoning: { enabled: false } },
+        requestBody,
         abortController.signal,
         (delta, candidate) => {
           if (!badgeSet) { updateModelBadge(candidate.name); badgeSet = true; }
@@ -2066,6 +2519,7 @@
       if (!fullText) fullText = '(empty response)';
       if (truncated) fullText += '\n\n[response cut short — the model provider hit a temporary error]';
       renderInto(assistantBubble, fullText);
+      if (annotations && annotations.length) renderSources(assistantBubble.parentElement, annotations);
       const assistantMsgObj = { role: 'assistant', content: fullText };
       messages.push(assistantMsgObj);
       addMsgTools(assistantBubble, fullText, assistantMsgObj);
@@ -2089,6 +2543,44 @@
       setSendingUi(false);
       input.focus();
     }
+  }
+
+  let webSearchEnabled = false;
+  const searchToggleBtn = $('searchToggleBtn');
+  searchToggleBtn.addEventListener('click', () => {
+    webSearchEnabled = !webSearchEnabled;
+    searchToggleBtn.classList.toggle('active', webSearchEnabled);
+  });
+
+  function renderSources(col, annotations) {
+    const seen = new Set();
+    const unique = [];
+    for (const a of annotations) {
+      const c = a.url_citation;
+      if (!c || !c.url || seen.has(c.url)) continue;
+      seen.add(c.url);
+      unique.push(c);
+    }
+    if (!unique.length) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'msg-sources';
+    const label = document.createElement('div');
+    label.className = 'sources-label';
+    label.textContent = 'Sources';
+    wrap.appendChild(label);
+    const ol = document.createElement('ol');
+    for (const c of unique) {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = c.url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.textContent = c.title || c.url;
+      li.appendChild(a);
+      ol.appendChild(li);
+    }
+    wrap.appendChild(ol);
+    col.appendChild(wrap);
   }
 
   function regenerateFrom(msgObj) {
@@ -2163,6 +2655,21 @@
       });
     });
     tools.appendChild(copyBtn);
+
+    const docxBtn = document.createElement('button');
+    docxBtn.type = 'button';
+    docxBtn.textContent = '⬇ Word';
+    docxBtn.title = 'Download as .docx';
+    docxBtn.addEventListener('click', () => exportMessageAsDocx(text, currentExportTitle()));
+    tools.appendChild(docxBtn);
+
+    const pptxBtn = document.createElement('button');
+    pptxBtn.type = 'button';
+    pptxBtn.textContent = '⬇ Slides';
+    pptxBtn.title = 'Download as .pptx';
+    pptxBtn.addEventListener('click', () => exportMessageAsPptx(text, currentExportTitle()));
+    tools.appendChild(pptxBtn);
+
     if (msgObj) {
       const regenBtn = document.createElement('button');
       regenBtn.type = 'button';
@@ -2171,6 +2678,12 @@
       tools.appendChild(regenBtn);
     }
     bubble.parentElement.appendChild(tools);
+  }
+
+  function currentExportTitle() {
+    const conv = conversations.find(c => c.id === activeConvId);
+    const title = conv && conv.title && conv.title !== 'New chat' ? conv.title : 'chat-export';
+    return title.replace(/[\\/:*?"<>|]/g, '').slice(0, 60).trim() || 'chat-export';
   }
 
   function renderStoredMessage(msg) {
@@ -2220,6 +2733,12 @@
     const text = input.value.trim();
     if (/^\/models?(\s|$)/i.test(text)) {
       handleModelCommand(text);
+      input.value = '';
+      autoGrow();
+      return;
+    }
+    if (/^\/(remember|forget|memories|memory)\b/i.test(text)) {
+      handleMemoryCommand(text);
       input.value = '';
       autoGrow();
       return;
