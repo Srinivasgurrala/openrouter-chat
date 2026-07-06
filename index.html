@@ -288,6 +288,8 @@
     min-width: 0;
   }
   .bubble.error { color: var(--danger); }
+  .bubble.local-note { color: var(--text-dim); }
+  .bubble.local-note strong, .bubble.local-note code { color: var(--text); }
   .bubble code {
     background: var(--panel-2);
     padding: 1px 5px;
@@ -808,6 +810,8 @@
 
   let textPool = FALLBACK_TEXT_POOL.slice();
   let visionPool = FALLBACK_VISION_POOL.slice();
+  let allModelsFlat = []; // every model OpenRouter lists, for /model search — not just the free pools
+  let modelOverride = null; // { id, name, free } when the user has pinned a specific model via /model
 
   function rankModel(m) {
     let score = 0;
@@ -822,6 +826,11 @@
       const res = await fetch('https://openrouter.ai/api/v1/models');
       if (!res.ok) throw new Error('bad status');
       const json = await res.json();
+      allModelsFlat = json.data.map(m => ({
+        id: m.id,
+        name: m.name || m.id,
+        free: (m.pricing || {}).prompt === '0' && (m.pricing || {}).completion === '0'
+      }));
       const free = json.data.filter(m => {
         const p = m.pricing || {};
         const arch = m.architecture || {};
@@ -847,11 +856,11 @@
   }
   loadModelPools();
 
-  let lastUsedModelName = '';
+  let lastAutoModelName = 'selecting…';
   function updateModelBadge(name) {
-    lastUsedModelName = name;
+    if (!modelOverride) lastAutoModelName = name;
     modelBadge.innerHTML = '';
-    modelBadge.textContent = 'Auto · ';
+    modelBadge.textContent = (modelOverride ? 'Pinned · ' : 'Auto · ');
     const b = document.createElement('b');
     b.textContent = name;
     modelBadge.appendChild(b);
@@ -1954,9 +1963,74 @@
   });
 
   function poolForMessages(msgs) {
+    if (modelOverride) return [modelOverride];
     const lastUser = msgs.slice().reverse().find(m => m.role === 'user');
     const hasImage = lastUser && Array.isArray(lastUser.content) && lastUser.content.some(p => p.type === 'image_url');
     return hasImage ? visionPool : textPool;
+  }
+
+  // ---------- /model command: pin a specific model from inside the chat ----------
+  function notifyLocal(text) {
+    const b = addMessage('assistant', text);
+    b.classList.add('local-note');
+  }
+
+  function handleModelCommand(raw) {
+    const arg = raw.replace(/^\/models?\b/i, '').trim();
+
+    if (!arg || /^list$/i.test(arg)) {
+      const lines = [];
+      lines.push(modelOverride
+        ? '**Current:** pinned to `' + modelOverride.id + '`'
+        : '**Current:** automatic (free model, picked per message)');
+      lines.push('');
+      lines.push('**Free text models:**');
+      textPool.slice(0, 8).forEach(m => lines.push('- ' + m.name + ' — `' + m.id + '`'));
+      lines.push('');
+      lines.push('**Free vision models:**');
+      visionPool.slice(0, 6).forEach(m => lines.push('- ' + m.name + ' — `' + m.id + '`'));
+      lines.push('');
+      lines.push('Say `/model <name>` to pin one, or `/model auto` to go back to automatic selection.');
+      notifyLocal(lines.join('\n'));
+      return;
+    }
+
+    if (/^(auto|reset|clear)$/i.test(arg)) {
+      modelOverride = null;
+      updateModelBadge(lastAutoModelName);
+      notifyLocal('Switched back to automatic free-model selection.');
+      return;
+    }
+
+    const q = arg.toLowerCase();
+    const pool = allModelsFlat.length ? allModelsFlat : textPool.concat(visionPool).map(m => ({ id: m.id, name: m.name, free: true }));
+    const matches = pool.filter(m => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q));
+
+    if (!matches.length) {
+      notifyLocal("No model found matching `" + arg + "`. Try `/model list` to see suggestions.");
+      return;
+    }
+    let chosen;
+    if (matches.length > 1) {
+      const exact = matches.find(m => m.id.toLowerCase() === q || m.name.toLowerCase() === q);
+      if (!exact) {
+        const lines = ['Multiple models match `' + arg + '` — be more specific:'];
+        matches.slice(0, 15).forEach(m => lines.push('- ' + m.name + ' — `' + m.id + '`'));
+        if (matches.length > 15) lines.push('…and ' + (matches.length - 15) + ' more.');
+        notifyLocal(lines.join('\n'));
+        return;
+      }
+      chosen = exact;
+    } else {
+      chosen = matches[0];
+    }
+
+    modelOverride = { id: chosen.id, name: chosen.name };
+    updateModelBadge(modelOverride.name);
+    const freeNote = chosen.free === false
+      ? '\n\n⚠️ This model is **not free** — usage will be billed to your OpenRouter key.'
+      : '';
+    notifyLocal('Pinned model: **' + modelOverride.name + '** (`' + modelOverride.id + '`).' + freeNote + '\n\nSay `/model auto` to go back to automatic selection.');
   }
 
   async function runAssistantTurn() {
@@ -2144,6 +2218,12 @@
     e.preventDefault();
     if (busy) return;
     const text = input.value.trim();
+    if (/^\/models?(\s|$)/i.test(text)) {
+      handleModelCommand(text);
+      input.value = '';
+      autoGrow();
+      return;
+    }
     const hasReadyAttachment = attachments.some(a => a.status === 'ready');
     const isProcessing = attachments.some(a => a.status === 'reading');
     if (!text && !hasReadyAttachment) return;
