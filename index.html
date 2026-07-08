@@ -804,6 +804,194 @@
     font-family: inherit;
   }
   .modal-actions button.secondary { background: none; border: 1px solid var(--border); color: var(--text-dim); }
+
+  /* ---------- Math rendering (MathML + HTML fallback) ---------- */
+  .math-inline { display: inline-block; }
+  .math-display { display: block; text-align: center; margin: 8px 0; overflow-x: auto; }
+  math { font-size: 1.05em; }
+  .math-fallback { font-family: "Cambria Math", Georgia, serif; }
+  .math-fallback .mo { padding: 0 0.15em; }
+  .math-fallback .mfrac {
+    display: inline-flex;
+    flex-direction: column;
+    vertical-align: middle;
+    text-align: center;
+    margin: 0 0.15em;
+  }
+  .math-fallback .mfrac-num { border-bottom: 1px solid currentColor; padding: 0 0.25em; }
+  .math-fallback .mfrac-den { padding: 0 0.25em; }
+  .math-fallback .msqrt-sign { padding-right: 0.1em; }
+  .math-fallback .msqrt-rad { border-top: 1px solid currentColor; padding: 0 0.15em; }
+  .math-fallback sup, .math-fallback sub { font-size: 0.75em; }
+
+  /* ---------- Answer-style controls ---------- */
+  .study-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  button.ctrl-btn {
+    background: var(--panel);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  button.ctrl-btn:hover { border-color: var(--accent); color: var(--text); }
+  button.ctrl-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--text); }
+  .depth-seg {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .depth-seg .seg-btn {
+    background: var(--panel);
+    color: var(--text-dim);
+    border: none;
+    border-left: 1px solid var(--border);
+    height: 30px;
+    padding: 0 10px;
+    font-size: 11.5px;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .depth-seg .seg-btn:first-child { border-left: none; }
+  .depth-seg .seg-btn:hover { color: var(--text); }
+  .depth-seg .seg-btn.active { background: var(--accent-dim); color: var(--text); }
+
+  /* ---------- Study menu popup ---------- */
+  .study-menu {
+    position: fixed;
+    z-index: 50;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.35);
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 170px;
+  }
+  .study-menu-item {
+    background: none;
+    border: none;
+    color: var(--text);
+    text-align: left;
+    padding: 8px 10px;
+    border-radius: 7px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .study-menu-item:hover { background: var(--panel-2); }
+
+  /* ---------- Study widgets (flashcards / quiz / guide) ---------- */
+  .study-generating { color: var(--text-dim); font-size: 13px; font-style: italic; }
+  .study-title { font-weight: 700; font-size: 14px; margin-bottom: 8px; }
+  .flashcard {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    min-height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 18px 20px;
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1.5;
+    transition: border-color 0.15s;
+  }
+  .flashcard:hover { border-color: var(--accent); }
+  .flashcard.flipped { background: var(--accent-dim); }
+  .flashcard-face { white-space: pre-wrap; word-wrap: break-word; }
+  .flashcard-hint { text-align: center; color: var(--text-dim); font-size: 11px; margin-top: 6px; }
+  .flashcard-nav { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 10px; }
+  .flashcard-counter { color: var(--text-dim); font-size: 12px; min-width: 60px; text-align: center; }
+  button.study-btn2 {
+    background: var(--panel);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  button.study-btn2:hover { border-color: var(--accent); color: var(--text); }
+  button.study-export { display: block; margin: 12px auto 0; }
+  .quiz-score {
+    font-weight: 700;
+    font-size: 13px;
+    margin-bottom: 10px;
+    color: var(--text);
+  }
+  .quiz-q { margin-bottom: 16px; }
+  .quiz-qtext { font-weight: 600; margin-bottom: 8px; line-height: 1.5; }
+  .quiz-opt {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    font-size: 13px;
+    line-height: 1.45;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .quiz-opt:hover:not(.locked) { border-color: var(--accent); }
+  .quiz-opt.locked { cursor: default; }
+  .quiz-opt-letter {
+    flex-shrink: 0;
+    font-weight: 700;
+    color: var(--text-dim);
+  }
+  .quiz-opt.correct {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  .quiz-opt.correct .quiz-opt-letter { color: var(--accent); }
+  .quiz-opt.wrong {
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+  .quiz-opt.wrong .quiz-opt-letter { color: var(--danger); }
+  .quiz-explain {
+    font-size: 12.5px;
+    color: var(--text-dim);
+    padding: 6px 10px;
+    margin-top: 2px;
+    border-left: 3px solid var(--border);
+    line-height: 1.5;
+  }
+
+  /* ---------- Follow-up suggestion chips ---------- */
+  .followups { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  button.followup-chip {
+    background: var(--panel);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 13px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+  }
+  button.followup-chip:hover { border-color: var(--accent); color: var(--text); }
 </style>
 
 <aside class="sidebar" id="sidebar">
@@ -857,6 +1045,15 @@
 
   <form id="composer" class="composer" style="display:none;">
     <div class="composer-inner">
+      <div id="studyControls" class="study-controls">
+        <button type="button" class="ctrl-btn" id="tutorBtn" title="Socratic tutor mode: guides you to the answer instead of giving it outright">🎓 Tutor</button>
+        <div class="depth-seg" role="group" aria-label="Answer depth">
+          <button type="button" class="seg-btn" data-depth="eli5">ELI5</button>
+          <button type="button" class="seg-btn active" data-depth="standard">Standard</button>
+          <button type="button" class="seg-btn" data-depth="expert">Expert</button>
+        </div>
+        <button type="button" class="ctrl-btn" id="studyBtn" title="Turn the last answer or an attached file into study material">📚 Study</button>
+      </div>
       <div id="quickActions" class="quick-actions"></div>
       <div id="attachmentsBar" class="attachments-bar"></div>
       <div class="composer-row">
@@ -1970,8 +2167,120 @@
     return wrap;
   }
 
-  // Renders **bold**, *italic*/_italic_, `code`, and [text](url) inline spans into `parent`.
+  // ---------- Math (LaTeX subset -> HTML fallback, no library) ----------
+  const MATH_GREEK = { alpha:'α', beta:'β', gamma:'γ', delta:'δ', epsilon:'ε', varepsilon:'ε', zeta:'ζ', eta:'η', theta:'θ', iota:'ι', kappa:'κ', lambda:'λ', mu:'μ', nu:'ν', xi:'ξ', pi:'π', rho:'ρ', sigma:'σ', tau:'τ', upsilon:'υ', phi:'φ', varphi:'ϕ', chi:'χ', psi:'ψ', omega:'ω', Gamma:'Γ', Delta:'Δ', Theta:'Θ', Lambda:'Λ', Xi:'Ξ', Pi:'Π', Sigma:'Σ', Phi:'Φ', Psi:'Ψ', Omega:'Ω' };
+  const MATH_OPS = { times:'×', div:'÷', pm:'±', mp:'∓', cdot:'·', leq:'≤', le:'≤', geq:'≥', ge:'≥', neq:'≠', ne:'≠', approx:'≈', equiv:'≡', cong:'≅', rightarrow:'→', to:'→', Rightarrow:'⇒', leftarrow:'←', leftrightarrow:'↔', infty:'∞', partial:'∂', nabla:'∇', in:'∈', notin:'∉', subset:'⊂', subseteq:'⊆', supset:'⊃', cup:'∪', cap:'∩', forall:'∀', exists:'∃', ldots:'…', dots:'…', cdots:'⋯', angle:'∠', propto:'∝', sim:'∼', ast:'∗', circ:'∘', bullet:'•', prime:'′', deg:'°', sum:'∑', int:'∫', oint:'∮', prod:'∏', lim:'lim', log:'log', ln:'ln', sin:'sin', cos:'cos', tan:'tan', Re:'ℜ', Im:'ℑ', hbar:'ℏ', ell:'ℓ', aleph:'ℵ' };
+
+  function mathEl(tag, cls) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    return e;
+  }
+
+  // Recursive-descent renderer for a common LaTeX subset. Unknown commands
+  // degrade to their literal name so nothing throws on unsupported input.
+  function parseLatex(str, container) {
+    let i = 0;
+    function readGroup() {
+      while (str[i] === ' ') i++;
+      if (str[i] === '{') {
+        let depth = 0; const start = i + 1;
+        while (i < str.length) {
+          if (str[i] === '{') depth++;
+          else if (str[i] === '}') { depth--; if (depth === 0) { const s = str.slice(start, i); i++; return s; } }
+          i++;
+        }
+        return str.slice(start);
+      }
+      if (str[i] === '\\') {
+        let j = i + 1; while (j < str.length && /[a-zA-Z]/.test(str[j])) j++;
+        if (j === i + 1) j = i + 2; // \{ etc.
+        const s = str.slice(i, j); i = j; return s;
+      }
+      const ch = str[i] || ''; if (ch) i++; return ch;
+    }
+    let guard = 0;
+    while (i < str.length && guard++ < 5000) {
+      const ch = str[i];
+      if (ch === ' ') { i++; continue; }
+      if (ch === '\\') {
+        let j = i + 1; while (j < str.length && /[a-zA-Z]/.test(str[j])) j++;
+        const name = str.slice(i + 1, j);
+        i = (j === i + 1) ? i + 2 : j; // consume 1-char escapes like \{ \, too
+        if (name === 'frac' || name === 'dfrac' || name === 'tfrac') {
+          const a = readGroup(); const b = readGroup();
+          const frac = mathEl('span', 'mfrac');
+          const num = mathEl('span', 'mfrac-num'); parseLatex(a, num);
+          const den = mathEl('span', 'mfrac-den'); parseLatex(b, den);
+          frac.appendChild(num); frac.appendChild(den); container.appendChild(frac);
+        } else if (name === 'sqrt') {
+          while (str[i] === ' ') i++;
+          let index = null;
+          if (str[i] === '[') { const close = str.indexOf(']', i); if (close !== -1) { index = str.slice(i + 1, close); i = close + 1; } }
+          const a = readGroup();
+          const wrap = mathEl('span', null);
+          if (index) { const sup = document.createElement('sup'); sup.textContent = index; wrap.appendChild(sup); }
+          const sign = mathEl('span', 'msqrt-sign'); sign.textContent = '√'; wrap.appendChild(sign);
+          const rad = mathEl('span', 'msqrt-rad'); parseLatex(a, rad); wrap.appendChild(rad);
+          container.appendChild(wrap);
+        } else if (name === 'text' || name === 'mathrm' || name === 'mathbf' || name === 'mathit' || name === 'operatorname') {
+          const a = readGroup(); container.appendChild(document.createTextNode(a));
+        } else if (name === 'left' || name === 'right' || name === 'big' || name === 'Big') {
+          if (str[i] && str[i] !== ' ') { if (str[i] !== '.') container.appendChild(document.createTextNode(str[i])); i++; }
+        } else if (name === '' ) {
+          const nx = str[i - 1];
+          if (nx && ',;! '.indexOf(nx) === -1) container.appendChild(document.createTextNode(nx));
+        } else if (MATH_GREEK[name] || MATH_OPS[name]) {
+          const s = mathEl('span', 'mo'); s.textContent = MATH_GREEK[name] || MATH_OPS[name]; container.appendChild(s);
+        } else {
+          container.appendChild(document.createTextNode(name));
+        }
+      } else if (ch === '^' || ch === '_') {
+        i++;
+        const g = readGroup();
+        const ss = document.createElement(ch === '^' ? 'sup' : 'sub');
+        parseLatex(g, ss);
+        container.appendChild(ss);
+      } else if (ch === '{') {
+        const g = readGroup();
+        parseLatex(g, container);
+      } else if (ch === '}') {
+        i++;
+      } else if ('+-=<>'.indexOf(ch) !== -1) {
+        const s = mathEl('span', 'mo'); s.textContent = ch; container.appendChild(s); i++;
+      } else if (ch === '*') {
+        const s = mathEl('span', 'mo'); s.textContent = '×'; container.appendChild(s); i++;
+      } else {
+        container.appendChild(document.createTextNode(ch)); i++;
+      }
+    }
+  }
+
+  function renderMath(latex, isDisplay) {
+    const span = mathEl('span', (isDisplay ? 'math-display' : 'math-inline') + ' math-fallback');
+    try { parseLatex(latex.trim(), span); }
+    catch (e) { span.textContent = latex; }
+    return span;
+  }
+
+  const MATH_DELIM_RE = /\$\$([\s\S]+?)\$\$|\$(\S(?:[^$\n]*?\S)?)\$/g;
+
+  // Renders **bold**, *italic*/_italic_, `code`, [text](url), and $math$ inline into `parent`.
   function renderInline(segment, parent) {
+    MATH_DELIM_RE.lastIndex = 0;
+    let last = 0; let mm;
+    while ((mm = MATH_DELIM_RE.exec(segment))) {
+      if (segment[mm.index - 1] === '\\') continue; // escaped \$ -> handled as literal below
+      if (mm.index > last) renderInlineFormatting(segment.slice(last, mm.index), parent);
+      const isDisplay = mm[1] !== undefined;
+      parent.appendChild(renderMath(isDisplay ? mm[1] : mm[2], isDisplay));
+      last = MATH_DELIM_RE.lastIndex;
+    }
+    if (last < segment.length) renderInlineFormatting(segment.slice(last), parent);
+  }
+
+  function renderInlineFormatting(rawSegment, parent) {
+    const segment = rawSegment.replace(/\\\$/g, '$');
     const inlineRe = /(\*\*[^*\n]+\*\*)|(`[^`\n]+`)|(\[[^\]\n]+\]\([^)\s]+\))|(\*[^*\n]+\*|_[^_\n]+_)/g;
     let last = 0;
     let m;
@@ -2731,6 +3040,10 @@
       const systemParts = [];
       if (customInstructions.trim()) systemParts.push(customInstructions.trim());
       if (memories.length) systemParts.push('Remember these facts about the user:\n' + memories.map(m => '- ' + m).join('\n'));
+      if (tutorMode) systemParts.push('You are a Socratic tutor. Do not give the final answer outright. Ask guiding questions, give hints, and lead the student to the answer step by step. Only confirm the final answer after they attempt it.');
+      if (answerDepth === 'eli5') systemParts.push('Explain in very simple terms suitable for a young student, using everyday analogies and short sentences.');
+      else if (answerDepth === 'expert') systemParts.push('Give an advanced, technical, in-depth answer assuming strong background knowledge.');
+      systemParts.push('Use LaTeX for any math: wrap inline math in single dollar signs and display equations in double dollar signs. After your answer, on a new final line, output exactly: SUGGESTIONS: q1 | q2 | q3 (three short follow-up questions the user might ask next).');
       // Context trimming: keep only the last 30 messages, and strip base64 images
       // from all but the last 2 user messages so old attachments don't bloat requests.
       const recentMessages = messages.slice(-30);
@@ -2758,7 +3071,7 @@
         (delta, candidate) => {
           if (!badgeSet) { updateModelBadge(candidate.name); badgeSet = true; }
           fullText += delta;
-          renderInto(assistantBubble, fullText);
+          renderInto(assistantBubble, splitSuggestions(fullText).body);
           assistantBubble.appendChild(cursor);
           thread.scrollTop = thread.scrollHeight;
         }
@@ -2767,8 +3080,11 @@
       cursor.remove();
       if (!fullText) fullText = '(empty response)';
       if (truncated) fullText += '\n\n[response cut short — the model provider hit a temporary error]';
+      const split = splitSuggestions(fullText);
+      fullText = split.body;
       renderInto(assistantBubble, fullText);
       if (annotations && annotations.length) renderSources(assistantBubble.parentElement, annotations);
+      if (split.suggestions.length) renderFollowups(assistantBubble.parentElement, split.suggestions);
       const assistantMsgObj = { role: 'assistant', content: fullText };
       messages.push(assistantMsgObj);
       addMsgTools(assistantBubble, fullText, assistantMsgObj);
@@ -2813,6 +3129,289 @@
     webSearchEnabled = !webSearchEnabled;
     searchToggleBtn.classList.toggle('active', webSearchEnabled);
   });
+
+  // ---------- Follow-up suggestions (trailer parsing + chips) ----------
+  function splitSuggestions(text) {
+    const m = /\n*SUGGESTIONS:[ \t]*([\s\S]*)$/i.exec(text);
+    if (!m) return { body: text, suggestions: [] };
+    const body = text.slice(0, m.index).replace(/\s+$/, '');
+    const suggestions = m[1].split('|').map(s => s.trim()).filter(Boolean).slice(0, 3);
+    return { body: body, suggestions: suggestions };
+  }
+
+  function renderFollowups(col, suggestions) {
+    const wrap = document.createElement('div');
+    wrap.className = 'followups';
+    suggestions.forEach(q => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'followup-chip';
+      b.textContent = q;
+      b.addEventListener('click', () => {
+        if (busy) return;
+        input.value = q;
+        autoGrow();
+        composerForm.requestSubmit();
+      });
+      wrap.appendChild(b);
+    });
+    col.appendChild(wrap);
+  }
+
+  // ---------- Answer-style controls (tutor mode + depth) ----------
+  let tutorMode = localStorage.getItem('openrouter_tutor') === '1';
+  let answerDepth = localStorage.getItem('openrouter_depth') || 'standard';
+  const tutorBtn = $('tutorBtn');
+  tutorBtn.classList.toggle('active', tutorMode);
+  tutorBtn.addEventListener('click', () => {
+    tutorMode = !tutorMode;
+    tutorBtn.classList.toggle('active', tutorMode);
+    try { localStorage.setItem('openrouter_tutor', tutorMode ? '1' : '0'); } catch (e) { /* storage unavailable */ }
+  });
+  const depthBtns = Array.from(document.querySelectorAll('.depth-seg .seg-btn'));
+  function applyDepthUI() { depthBtns.forEach(b => b.classList.toggle('active', b.getAttribute('data-depth') === answerDepth)); }
+  applyDepthUI();
+  depthBtns.forEach(b => b.addEventListener('click', () => {
+    answerDepth = b.getAttribute('data-depth');
+    applyDepthUI();
+    try { localStorage.setItem('openrouter_depth', answerDepth); } catch (e) { /* storage unavailable */ }
+  }));
+
+  // ---------- Study tools (flashcards / quiz / study guide) ----------
+  const studyBtn = $('studyBtn');
+  let studyBusy = false;
+
+  function closeStudyMenu() {
+    const m = document.querySelector('.study-menu');
+    if (m) m.remove();
+    document.removeEventListener('click', onDocClickStudy, true);
+  }
+  function onDocClickStudy(e) {
+    const m = document.querySelector('.study-menu');
+    if (m && !m.contains(e.target) && e.target !== studyBtn) closeStudyMenu();
+  }
+  function openStudyMenu() {
+    const menu = document.createElement('div');
+    menu.className = 'study-menu';
+    [['🃏 Flashcards', 'flashcards'], ['❓ Quiz (MCQ)', 'quiz'], ['📖 Study guide', 'guide']].forEach(pair => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'study-menu-item';
+      b.textContent = pair[0];
+      b.addEventListener('click', () => { closeStudyMenu(); startStudy(pair[1]); });
+      menu.appendChild(b);
+    });
+    document.body.appendChild(menu);
+    const r = studyBtn.getBoundingClientRect();
+    menu.style.left = Math.max(8, r.left) + 'px';
+    menu.style.top = (r.top - menu.offsetHeight - 6) + 'px';
+    setTimeout(() => document.addEventListener('click', onDocClickStudy, true), 0);
+  }
+  studyBtn.addEventListener('click', () => {
+    if (document.querySelector('.study-menu')) closeStudyMenu();
+    else openStudyMenu();
+  });
+
+  function studySource() {
+    const readyDoc = attachments.find(a => a.status === 'ready' && a.kind === 'doc');
+    if (readyDoc && readyDoc.text) return { label: readyDoc.name, text: readyDoc.text };
+    for (let k = messages.length - 1; k >= 0; k--) {
+      if (messages[k].role === 'assistant' && typeof messages[k].content === 'string') {
+        return { label: 'the last answer', text: messages[k].content };
+      }
+    }
+    return null;
+  }
+
+  function parseStudyJson(raw) {
+    let s = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const a = s.indexOf('{');
+    const b = s.lastIndexOf('}');
+    if (a === -1 || b === -1 || b < a) return null;
+    const slice = s.slice(a, b + 1);
+    try { return JSON.parse(slice); } catch (e) { /* retry after fixing invalid escapes */ }
+    // Models often emit LaTeX with lone backslashes (\frac) which is invalid
+    // JSON; escape any backslash that isn't part of a valid JSON escape.
+    try { return JSON.parse(slice.replace(/\\(?!["\\/bfnrtu])/g, '\\\\')); } catch (e) { return null; }
+  }
+
+  async function startStudy(kind) {
+    if (busy || studyBusy) { notifyLocal('Please wait for the current response to finish.'); return; }
+    const src = studySource();
+    if (!src || !src.text.trim()) {
+      notifyLocal('Attach a document or ask a question first, then use 📚 Study to turn it into study material.');
+      return;
+    }
+    studyBusy = true;
+    const bubble = addMessage('assistant', '');
+    const note = document.createElement('div');
+    note.className = 'study-generating';
+    note.textContent = 'Generating ' + (kind === 'guide' ? 'study guide' : kind === 'quiz' ? 'quiz' : 'flashcards') + ' from ' + src.label + '…';
+    bubble.appendChild(note);
+    thread.scrollTop = thread.scrollHeight;
+
+    const material = src.text.slice(0, 8000);
+    let sys, user;
+    if (kind === 'flashcards') {
+      sys = 'You are a study assistant. Output ONLY valid JSON, no prose, no code fences. Write math and symbols in plain text (x^2, sqrt(x), sum, <=), never LaTeX, and never use backslashes.';
+      user = 'Create 8-12 study flashcards from the material below. Return JSON exactly: {"cards":[{"front":"question or term","back":"answer or definition"}]}\n\nMATERIAL:\n' + material;
+    } else if (kind === 'quiz') {
+      sys = 'You are a study assistant. Output ONLY valid JSON, no prose, no code fences. Write math and symbols in plain text (x^2, sqrt(x), sum, <=), never LaTeX, and never use backslashes.';
+      user = 'Create 5-8 multiple-choice questions (4 options each) from the material below. Return JSON exactly: {"questions":[{"q":"question","options":["a","b","c","d"],"answer":0,"explanation":"why the answer is correct"}]} where answer is the 0-based index of the correct option.\n\nMATERIAL:\n' + material;
+    } else {
+      sys = 'You are a study assistant. Produce a clear, well-structured study guide in Markdown with headings, bullet points, and **bolded** key terms.';
+      user = 'Create a concise study guide from the material below.\n\nMATERIAL:\n' + material;
+    }
+
+    let out = '';
+    try {
+      await fetchChatCompletion(
+        poolForMessages(messages),
+        { messages: [{ role: 'system', content: sys }, { role: 'user', content: user }], stream: true, max_tokens: 2048, reasoning: { enabled: false } },
+        null,
+        (d) => { out += d; }
+      );
+    } catch (e) {
+      note.textContent = 'Could not generate study material: ' + e.message;
+      studyBusy = false;
+      return;
+    }
+    note.remove();
+    if (kind === 'guide') {
+      renderInto(bubble, out.trim() || '(empty)');
+    } else {
+      const data = parseStudyJson(out);
+      if (!data) {
+        const warn = document.createElement('div');
+        warn.className = 'study-generating';
+        warn.textContent = "Couldn't structure that as " + (kind === 'quiz' ? 'a quiz' : 'flashcards') + " — showing the raw output:";
+        bubble.appendChild(warn);
+        const rawDiv = document.createElement('div');
+        bubble.appendChild(rawDiv);
+        renderInto(rawDiv, out.trim() || '(empty)');
+      } else if (kind === 'flashcards') {
+        renderFlashcards(bubble, Array.isArray(data.cards) ? data.cards : []);
+      } else {
+        renderQuiz(bubble, Array.isArray(data.questions) ? data.questions : []);
+      }
+    }
+    thread.scrollTop = thread.scrollHeight;
+    studyBusy = false;
+  }
+
+  function renderFlashcards(bubble, cards) {
+    if (!cards.length) { renderInto(bubble, '(no flashcards were generated)'); return; }
+    const title = document.createElement('div');
+    title.className = 'study-title';
+    title.textContent = '🃏 Flashcards (' + cards.length + ')';
+    bubble.appendChild(title);
+
+    let idx = 0, flipped = false;
+    const card = document.createElement('div');
+    card.className = 'flashcard';
+    const face = document.createElement('div');
+    face.className = 'flashcard-face';
+    card.appendChild(face);
+    const hint = document.createElement('div');
+    hint.className = 'flashcard-hint';
+    hint.textContent = 'Click the card to flip';
+    const nav = document.createElement('div');
+    nav.className = 'flashcard-nav';
+    const prev = document.createElement('button');
+    prev.type = 'button'; prev.className = 'study-btn2'; prev.textContent = '‹ Prev';
+    const counter = document.createElement('div');
+    counter.className = 'flashcard-counter';
+    const next = document.createElement('button');
+    next.type = 'button'; next.className = 'study-btn2'; next.textContent = 'Next ›';
+    nav.appendChild(prev); nav.appendChild(counter); nav.appendChild(next);
+
+    function draw() {
+      flipped = false;
+      card.classList.remove('flipped');
+      face.textContent = cards[idx].front || '';
+      counter.textContent = (idx + 1) + ' / ' + cards.length;
+    }
+    card.addEventListener('click', () => {
+      flipped = !flipped;
+      card.classList.toggle('flipped', flipped);
+      face.textContent = flipped ? (cards[idx].back || '') : (cards[idx].front || '');
+    });
+    prev.addEventListener('click', () => { idx = (idx - 1 + cards.length) % cards.length; draw(); });
+    next.addEventListener('click', () => { idx = (idx + 1) % cards.length; draw(); });
+
+    bubble.appendChild(card);
+    bubble.appendChild(hint);
+    bubble.appendChild(nav);
+
+    const exp = document.createElement('button');
+    exp.type = 'button';
+    exp.className = 'study-btn2 study-export';
+    exp.textContent = '⬇ Export (Anki CSV)';
+    exp.addEventListener('click', () => {
+      const rows = cards.map(c => '"' + String(c.front || '').replace(/"/g, '""') + '","' + String(c.back || '').replace(/"/g, '""') + '"');
+      downloadBytes(new TextEncoder().encode(rows.join('\n')), currentExportTitle() + ' flashcards.csv', 'text/csv');
+    });
+    bubble.appendChild(exp);
+    draw();
+  }
+
+  function renderQuiz(bubble, questions) {
+    if (!questions.length) { renderInto(bubble, '(no quiz questions were generated)'); return; }
+    const title = document.createElement('div');
+    title.className = 'study-title';
+    title.textContent = '❓ Quiz (' + questions.length + ' questions)';
+    bubble.appendChild(title);
+    const score = document.createElement('div');
+    score.className = 'quiz-score';
+    bubble.appendChild(score);
+    let correct = 0, answered = 0;
+    function updateScore() {
+      score.textContent = 'Score: ' + correct + ' / ' + questions.length + (answered === questions.length ? ' — done!' : '');
+    }
+    updateScore();
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+    questions.forEach(q => {
+      const qWrap = document.createElement('div');
+      qWrap.className = 'quiz-q';
+      const qt = document.createElement('div');
+      qt.className = 'quiz-qtext';
+      qt.textContent = q.q || '';
+      qWrap.appendChild(qt);
+      const opts = Array.isArray(q.options) ? q.options : [];
+      const optButtons = [];
+      let locked = false;
+      opts.forEach((opt, oi) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'quiz-opt';
+        const l = document.createElement('span');
+        l.className = 'quiz-opt-letter';
+        l.textContent = (letters[oi] || '?') + '.';
+        const t = document.createElement('span');
+        t.textContent = opt;
+        b.appendChild(l);
+        b.appendChild(t);
+        b.addEventListener('click', () => {
+          if (locked) return;
+          locked = true;
+          answered++;
+          const ans = typeof q.answer === 'number' ? q.answer : -1;
+          optButtons.forEach((bb, bi) => { bb.classList.add('locked'); if (bi === ans) bb.classList.add('correct'); });
+          if (oi === ans) correct++; else b.classList.add('wrong');
+          updateScore();
+          if (q.explanation) {
+            const ex = document.createElement('div');
+            ex.className = 'quiz-explain';
+            ex.textContent = q.explanation;
+            qWrap.appendChild(ex);
+          }
+        });
+        optButtons.push(b);
+        qWrap.appendChild(b);
+      });
+      bubble.appendChild(qWrap);
+    });
+  }
 
   function renderSources(col, annotations) {
     const seen = new Set();
