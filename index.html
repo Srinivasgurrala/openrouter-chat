@@ -13,6 +13,18 @@
     --danger: #e5686f;
   }
 
+  :root.light {
+    --bg: #f7f7f8;
+    --panel: #ffffff;
+    --panel-2: #ececf1;
+    --border: #d9d9e3;
+    --text: #1a1a24;
+    --text-dim: #6e6e80;
+    --accent: #4a63d8;
+    --accent-dim: #dbe2ff;
+    --danger: #c4384f;
+  }
+
   * { box-sizing: border-box; }
 
   body {
@@ -98,6 +110,18 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .conv-item .conv-title-input {
+    flex: 1;
+    min-width: 0;
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    color: var(--text);
+    border-radius: 5px;
+    padding: 2px 6px;
+    font-size: 12.5px;
+    font-family: inherit;
+  }
+  .conv-item .conv-title-input:focus { outline: none; }
   .conv-item .conv-delete {
     background: none;
     border: none;
@@ -260,6 +284,24 @@
     line-height: 1.6;
     max-width: 320px;
   }
+  .welcome-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 16px;
+  }
+  .welcome-chips button {
+    background: var(--panel);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 7px 14px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .welcome-chips button:hover { border-color: var(--accent); color: var(--text); }
 
   .msg {
     display: flex;
@@ -610,6 +652,29 @@
   .tok-str { color: #9fce8e; }
   .tok-com { color: var(--text-dim); font-style: italic; }
   .tok-num { color: #e8a35e; }
+  :root.light .tok-kw { color: #8b2fc9; }
+  :root.light .tok-str { color: #2e7d32; }
+  :root.light .tok-num { color: #c05621; }
+
+  /* ---------- Markdown tables ---------- */
+  .md-table-wrap {
+    overflow-x: auto;
+    margin: 8px 0;
+  }
+  .md-table {
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .md-table th,
+  .md-table td {
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    text-align: left;
+  }
+  .md-table th {
+    background: var(--panel-2);
+    font-weight: 600;
+  }
 
   .code-preview-frame {
     border-top: 1px solid var(--border);
@@ -644,6 +709,9 @@
     padding: 10px 12px;
     border-top: 1px solid var(--border);
     flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
   .sidebar-footer button {
     width: 100%;
@@ -748,6 +816,7 @@
   <div class="conv-list" id="convList"></div>
   <div class="sidebar-footer">
     <button type="button" id="instructionsBtn">Custom instructions</button>
+    <button type="button" id="exportChatBtn">Export chat (.md)</button>
   </div>
 </aside>
 <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
@@ -772,6 +841,7 @@
     <div class="title">OpenRouter Chat</div>
     <div class="spacer"></div>
     <div class="model-badge" id="modelBadge" title="Model is chosen automatically from free, available models">Auto · picking model…</div>
+    <button class="icon-btn" id="themeToggle" type="button" title="Toggle light / dark theme">🌓</button>
     <button class="icon-btn" id="keyBtn" type="button">Key</button>
   </header>
 
@@ -783,11 +853,7 @@
     <div class="note">Stored in sessionStorage on your device only. Reloading the tab keeps it; closing the tab clears it.</div>
   </div>
 
-  <div id="thread" class="thread" style="display:none;">
-    <div class="empty" id="emptyState">Ask anything, or attach a file. A free model is picked automatically.
-
-Try /model, /remember, or /memories — or toggle 🌐 Search for live web results.</div>
-  </div>
+  <div id="thread" class="thread" style="display:none;"></div>
 
   <form id="composer" class="composer" style="display:none;">
     <div class="composer-inner">
@@ -818,7 +884,19 @@ Try /model, /remember, or /memories — or toggle 🌐 Search for live web resul
   const keyBtn = $('keyBtn');
   const modelBadge = $('modelBadge');
   const statusDot = $('statusDot');
-  let emptyState = $('emptyState');
+  let emptyState = null;
+
+  const THEME_KEY = 'openrouter_theme';
+  const themeToggle = $('themeToggle');
+  function applyTheme(theme) {
+    document.documentElement.classList.toggle('light', theme === 'light');
+  }
+  applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
+  themeToggle.addEventListener('click', () => {
+    const isLight = document.documentElement.classList.toggle('light');
+    const theme = isLight ? 'light' : 'dark';
+    try { localStorage.setItem(THEME_KEY, theme); } catch (e) { /* storage unavailable */ }
+  });
 
   let apiKey = sessionStorage.getItem('openrouter_key') || '';
   let messages = [];
@@ -2028,10 +2106,62 @@ Try /model, /remember, or /memories — or toggle 🌐 Search for live web resul
         container.appendChild(listEl);
         continue;
       }
+      if (line.indexOf('|') !== -1 && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+        flushParagraph();
+        const headerCells = parseTableRow(line);
+        i += 2;
+        const bodyRows = [];
+        while (i < lines.length && lines[i].indexOf('|') !== -1 && lines[i].trim() !== '') {
+          bodyRows.push(parseTableRow(lines[i]));
+          i++;
+        }
+        container.appendChild(buildTable(headerCells, bodyRows));
+        continue;
+      }
       paraLines.push(line);
       i++;
     }
     flushParagraph();
+  }
+
+  function isTableSeparator(line) {
+    return /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(line);
+  }
+
+  function parseTableRow(line) {
+    let s = line.trim();
+    if (s.charAt(0) === '|') s = s.slice(1);
+    if (s.charAt(s.length - 1) === '|') s = s.slice(0, -1);
+    return s.split('|').map(c => c.trim());
+  }
+
+  function buildTable(headerCells, bodyRows) {
+    const wrap = document.createElement('div');
+    wrap.className = 'md-table-wrap';
+    const table = document.createElement('table');
+    table.className = 'md-table';
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    for (const cell of headerCells) {
+      const th = document.createElement('th');
+      renderInline(cell, th);
+      headRow.appendChild(th);
+    }
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    for (const row of bodyRows) {
+      const tr = document.createElement('tr');
+      for (let c = 0; c < headerCells.length; c++) {
+        const td = document.createElement('td');
+        renderInline(row[c] || '', td);
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    return wrap;
   }
 
   let conversationsInitialized = false;
@@ -2194,6 +2324,7 @@ Try /model, /remember, or /memories — or toggle 🌐 Search for live web resul
       titleEl.className = 'conv-title';
       titleEl.textContent = conv.title || 'New chat';
       titleEl.title = conv.title || 'New chat';
+      titleEl.addEventListener('dblclick', (e) => { e.stopPropagation(); startRenamingConversation(item, titleEl, conv); });
       item.appendChild(titleEl);
       const delBtn = document.createElement('button');
       delBtn.type = 'button';
@@ -2208,13 +2339,79 @@ Try /model, /remember, or /memories — or toggle 🌐 Search for live web resul
     applySidebarFilter();
   }
 
+  function startRenamingConversation(item, titleEl, conv) {
+    if (item.querySelector('.conv-title-input')) return;
+    const oldTitle = conv.title || 'New chat';
+    const inputEl = document.createElement('input');
+    inputEl.type = 'text';
+    inputEl.className = 'conv-title-input';
+    inputEl.value = oldTitle;
+    item.replaceChild(inputEl, titleEl);
+    inputEl.focus();
+    inputEl.select();
+    let done = false;
+    function commit() {
+      if (done) return;
+      done = true;
+      const next = inputEl.value.trim() || oldTitle;
+      conv.title = next;
+      saveConversations();
+      renderSidebar();
+    }
+    function cancel() {
+      if (done) return;
+      done = true;
+      renderSidebar();
+    }
+    inputEl.addEventListener('click', (e) => e.stopPropagation());
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    });
+    inputEl.addEventListener('blur', commit);
+  }
+
+  function buildEmptyState() {
+    const div = document.createElement('div');
+    div.className = 'empty';
+    div.id = 'emptyState';
+    const textEl = document.createElement('div');
+    textEl.textContent = 'Ask anything, or attach a file. A free model is picked automatically.\n\nTry /model, /remember, or /memories — or toggle 🌐 Search for live web results.';
+    div.appendChild(textEl);
+
+    const chipsWrap = document.createElement('div');
+    chipsWrap.className = 'welcome-chips';
+    const chips = [
+      { label: '📄 Summarize a document', action: () => { fileInput.click(); } },
+      { label: '🐍 Write a Python script to rename files by date', action: () => submitPrompt('Write a Python script to rename files by date.') },
+      { label: '📊 Outline a 5-slide deck about our Q3 results', action: () => submitPrompt('Outline a 5-slide deck about our Q3 results.') },
+      { label: "🌐 What's in the tech news today?", action: () => {
+        webSearchEnabled = true;
+        searchToggleBtn.classList.add('active');
+        submitPrompt("What's in the tech news today?");
+      } }
+    ];
+    for (const chip of chips) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = chip.label;
+      btn.addEventListener('click', () => { if (busy) return; chip.action(); });
+      chipsWrap.appendChild(btn);
+    }
+    div.appendChild(chipsWrap);
+    return div;
+  }
+
+  function submitPrompt(text) {
+    if (busy) return;
+    input.value = text;
+    composerForm.requestSubmit();
+  }
+
   function renderThreadMessages() {
     thread.textContent = '';
     if (!messages.length) {
-      const div = document.createElement('div');
-      div.className = 'empty';
-      div.id = 'emptyState';
-      div.textContent = 'Ask anything, or attach a file. A free model is picked automatically.\n\nTry /model, /remember, or /memories — or toggle 🌐 Search for live web results.';
+      const div = buildEmptyState();
       thread.appendChild(div);
       emptyState = div;
     } else {
@@ -2360,6 +2557,36 @@ Try /model, /remember, or /memories — or toggle 🌐 Search for live web resul
     instructionsModal.classList.remove('show');
   });
 
+  const exportChatBtn = $('exportChatBtn');
+  exportChatBtn.addEventListener('click', () => {
+    const conv = conversations.find(c => c.id === activeConvId);
+    const title = (conv && conv.title) ? conv.title : 'Chat';
+    const parts = ['# ' + title, ''];
+    for (const msg of messages) {
+      const label = msg.role === 'user' ? '**You:**' : '**Assistant:**';
+      let body;
+      if (Array.isArray(msg.content)) {
+        const pieces = [];
+        for (const part of msg.content) {
+          if (part.type === 'text') pieces.push(part.text);
+          else if (part.type === 'image_url') pieces.push('[image attached]');
+        }
+        body = pieces.join('\n\n');
+      } else {
+        body = msg.content || '';
+      }
+      parts.push(label);
+      parts.push('');
+      parts.push(body);
+      parts.push('');
+      parts.push('---');
+      parts.push('');
+    }
+    const md = parts.join('\n');
+    downloadBytes(new TextEncoder().encode(md), title + '.md', 'text/markdown');
+    closeSidebarMobile();
+  });
+
   function poolForMessages(msgs) {
     if (modelOverride) return [modelOverride];
     const lastUser = msgs.slice().reverse().find(m => m.role === 'user');
@@ -2497,9 +2724,24 @@ Try /model, /remember, or /memories — or toggle 🌐 Search for live web resul
       const systemParts = [];
       if (customInstructions.trim()) systemParts.push(customInstructions.trim());
       if (memories.length) systemParts.push('Remember these facts about the user:\n' + memories.map(m => '- ' + m).join('\n'));
+      // Context trimming: keep only the last 30 messages, and strip base64 images
+      // from all but the last 2 user messages so old attachments don't bloat requests.
+      const recentMessages = messages.slice(-30);
+      const userIdxs = [];
+      recentMessages.forEach((m, idx) => { if (m.role === 'user') userIdxs.push(idx); });
+      const keepImageIdxs = new Set(userIdxs.slice(-2));
+      const sendableMessages = recentMessages.map((m, idx) => {
+        if (m.role === 'user' && Array.isArray(m.content) && !keepImageIdxs.has(idx)) {
+          const newContent = m.content.map(part =>
+            part.type === 'image_url' ? { type: 'text', text: '[image omitted from context]' } : part
+          );
+          return { role: m.role, content: newContent };
+        }
+        return m;
+      });
       const requestMessages = systemParts.length
-        ? [{ role: 'system', content: systemParts.join('\n\n') }].concat(messages)
-        : messages;
+        ? [{ role: 'system', content: systemParts.join('\n\n') }].concat(sendableMessages)
+        : sendableMessages;
       const requestBody = { messages: requestMessages, stream: true, max_tokens: 2048, reasoning: { enabled: false } };
       if (webSearchEnabled) requestBody.plugins = [{ id: 'web' }];
       const { truncated, annotations } = await fetchChatCompletion(
@@ -2536,6 +2778,19 @@ Try /model, /remember, or /memories — or toggle 🌐 Search for live web resul
       } else {
         assistantBubble.classList.add('error');
         assistantBubble.textContent = 'Error: ' + err.message;
+        const tools = document.createElement('div');
+        tools.className = 'msg-tools';
+        const retryBtn = document.createElement('button');
+        retryBtn.type = 'button';
+        retryBtn.textContent = 'Retry';
+        retryBtn.addEventListener('click', () => {
+          if (busy) return;
+          const wrap = assistantBubble.closest('.msg');
+          if (wrap) wrap.remove();
+          runAssistantTurn();
+        });
+        tools.appendChild(retryBtn);
+        assistantBubble.parentElement.appendChild(tools);
       }
     } finally {
       busy = false;
