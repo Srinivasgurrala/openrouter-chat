@@ -246,6 +246,55 @@
     margin-bottom: 12px;
   }
   .setup input:focus { outline: none; border-color: var(--accent); }
+  .setup-select {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    margin-bottom: 12px;
+    cursor: pointer;
+  }
+  .setup-select:focus { outline: none; border-color: var(--accent); }
+  .provider-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .provider-row:last-child { border-bottom: none; }
+  .provider-row .prov-name { font-weight: 600; font-size: 13px; flex: 1; min-width: 120px; }
+  .provider-row .prov-active { font-size: 11px; color: var(--accent); font-weight: 600; }
+  .provider-row input {
+    flex: 1 1 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 10px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .provider-row input:focus { outline: none; border-color: var(--accent); }
+  .provider-row button {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 7px;
+    padding: 6px 11px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .provider-row button:hover { border-color: var(--accent); color: var(--text); }
+  .provider-row button.prov-use { background: var(--accent); color: #101116; border-color: var(--accent); font-weight: 600; }
+  .provider-row .prov-hint { flex: 1 1 100%; font-size: 11px; color: var(--text-dim); }
+  .provider-row .prov-hint a { color: var(--accent); }
   .setup button {
     width: 100%;
     background: var(--accent);
@@ -1030,15 +1079,32 @@
     <div class="spacer"></div>
     <div class="model-badge" id="modelBadge" title="Model is chosen automatically from free, available models">Auto · picking model…</div>
     <button class="icon-btn" id="themeToggle" type="button" title="Toggle light / dark theme">🌓</button>
-    <button class="icon-btn" id="keyBtn" type="button">Key</button>
+    <button class="icon-btn" id="keyBtn" type="button" title="Switch provider or manage keys">Provider</button>
   </header>
 
   <div id="setupScreen" class="setup" style="display:none;">
-    <h2>Connect your OpenRouter key</h2>
-    <p>Paste an API key from openrouter.ai/keys. It's kept only in this browser tab's memory — never sent anywhere but OpenRouter.</p>
-    <input type="password" id="apiKeyInput" placeholder="sk-or-v1-..." autocomplete="off" spellcheck="false" />
-    <button id="saveKeyBtn" type="button">Start chatting</button>
-    <div class="note">Saved on this device only (your browser's local storage) — you won't need to re-enter it next time. Never sent anywhere but OpenRouter. Use the "Key" button to sign out and remove it.</div>
+    <h2>Choose how to connect</h2>
+    <p>Start instantly with no key, or paste a free API key from a provider. Everything stays on this device.</p>
+    <select id="providerSelect" class="setup-select">
+      <option value="puter">✨ Free — no key needed (sign in once with Puter)</option>
+      <option value="openrouter">OpenRouter — free models (needs key)</option>
+      <option value="groq">Groq — fast &amp; free (needs key)</option>
+      <option value="gemini">Google Gemini — free Flash (needs key)</option>
+    </select>
+    <input type="password" id="apiKeyInput" placeholder="Paste your key" autocomplete="off" spellcheck="false" style="display:none;" />
+    <button id="saveKeyBtn" type="button">Start free</button>
+    <div class="note" id="setupNote">No account, no key, no cost — powered by a free community endpoint. You can switch to a higher-quality provider anytime from the "Provider" button.</div>
+  </div>
+
+  <div class="modal-backdrop" id="providerModal">
+    <div class="modal">
+      <h3>Providers &amp; keys</h3>
+      <p>Switch providers or add free keys anytime. Keys are stored only on this device and sent only to that provider.</p>
+      <div id="providerList"></div>
+      <div class="modal-actions">
+        <button type="button" class="secondary" id="providerClose">Close</button>
+      </div>
+    </div>
   </div>
 
   <div id="thread" class="thread" style="display:none;"></div>
@@ -1095,12 +1161,64 @@
     try { localStorage.setItem(THEME_KEY, theme); } catch (e) { /* storage unavailable */ }
   });
 
-  // Key persists across browser restarts (localStorage) so it isn't re-entered
-  // every session; migrate any older sessionStorage-stored key on first load.
-  let apiKey = localStorage.getItem('openrouter_key') || sessionStorage.getItem('openrouter_key') || '';
-  if (apiKey && !localStorage.getItem('openrouter_key')) {
-    try { localStorage.setItem('openrouter_key', apiKey); sessionStorage.removeItem('openrouter_key'); } catch (e) { /* storage unavailable */ }
+  // ---------- Providers ----------
+  // Multiple free LLM providers, all OpenAI-compatible and browser-callable
+  // (CORS verified). Requests route to whichever provider is active. Reasoning
+  // and web-search params are OpenRouter-only and stripped for the others.
+  const PROVIDERS = {
+    puter: {
+      id: 'puter', label: 'Free · no key', keyless: true, puter: true,
+      textPool: [{ id: 'gpt-4o-mini', name: 'Free (no key)' }]
+    },
+    openrouter: {
+      id: 'openrouter', label: 'OpenRouter', keyHint: 'sk-or-v1-...', signup: 'openrouter.ai/keys',
+      endpoint: 'https://openrouter.ai/api/v1/chat/completions',
+      supportsWeb: true, supportsReasoningParam: true, dynamic: true
+    },
+    groq: {
+      id: 'groq', label: 'Groq', keyHint: 'gsk_...', signup: 'console.groq.com/keys',
+      endpoint: 'https://api.groq.com/openai/v1/chat/completions',
+      textPool: [
+        { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B' },
+        { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B' },
+        { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B' }
+      ]
+    },
+    gemini: {
+      id: 'gemini', label: 'Google Gemini', keyHint: 'AIza...', signup: 'aistudio.google.com/apikey',
+      endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+      textPool: [
+        { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+        { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite' },
+        { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' }
+      ],
+      visionPool: [{ id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' }]
+    }
+  };
+  const PROVIDER_KEYS_STORE = 'openrouter_provider_keys';
+  const ACTIVE_PROVIDER_STORE = 'openrouter_active_provider';
+
+  let providerKeys = {};
+  try { providerKeys = JSON.parse(localStorage.getItem(PROVIDER_KEYS_STORE) || '{}') || {}; } catch (e) { providerKeys = {}; }
+  // Migrate the older single OpenRouter key into the provider store.
+  const legacyKey = localStorage.getItem('openrouter_key') || sessionStorage.getItem('openrouter_key');
+  if (legacyKey && !providerKeys.openrouter) {
+    providerKeys.openrouter = legacyKey;
+    try { localStorage.setItem(PROVIDER_KEYS_STORE, JSON.stringify(providerKeys)); localStorage.removeItem('openrouter_key'); sessionStorage.removeItem('openrouter_key'); } catch (e) { /* storage unavailable */ }
   }
+  let activeProvider = localStorage.getItem(ACTIVE_PROVIDER_STORE) || (providerKeys.openrouter ? 'openrouter' : '');
+
+  function currentProvider() { return PROVIDERS[activeProvider] || null; }
+  function providerReady(p) { return !!p && (p.keyless || !!providerKeys[p.id]); }
+  function hasUsableProvider() { return providerReady(currentProvider()); }
+  function saveProviderKeys() {
+    try { localStorage.setItem(PROVIDER_KEYS_STORE, JSON.stringify(providerKeys)); } catch (e) { /* storage unavailable */ }
+  }
+  function setActiveProvider(id) {
+    activeProvider = id;
+    try { localStorage.setItem(ACTIVE_PROVIDER_STORE, id); } catch (e) { /* storage unavailable */ }
+  }
+
   let messages = [];
   let busy = false;
   let abortController = null;
@@ -1173,8 +1291,9 @@
   let lastAutoModelName = 'selecting…';
   function updateModelBadge(name) {
     if (!modelOverride) lastAutoModelName = name;
-    modelBadge.innerHTML = '';
-    modelBadge.textContent = (modelOverride ? 'Pinned · ' : 'Auto · ');
+    const prov = currentProvider();
+    const prefix = prov ? (prov.label + ' · ') : '';
+    modelBadge.textContent = prefix + (modelOverride ? 'pinned · ' : '');
     const b = document.createElement('b');
     b.textContent = name;
     modelBadge.appendChild(b);
@@ -1186,21 +1305,61 @@
   // provider errors — OpenRouter sometimes returns HTTP 200 with an SSE
   // stream whose only payload is `{choices: [], error: {...}}` when the
   // upstream provider is overloaded, so a plain res.ok check isn't enough.
+  // Lazily loads the Puter SDK (only when the no-key provider is used).
+  let puterLoading = null;
+  function ensurePuter() {
+    if (window.puter) return Promise.resolve();
+    if (puterLoading) return puterLoading;
+    puterLoading = new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://js.puter.com/v2/';
+      s.onload = () => res();
+      s.onerror = () => rej(new Error('Could not load the free (Puter) provider.'));
+      document.head.appendChild(s);
+      setTimeout(() => { window.puter ? res() : rej(new Error('Free provider timed out loading.')); }, 12000);
+    });
+    return puterLoading;
+  }
+
+  async function puterCompletion(candidate, body, onDelta) {
+    await ensurePuter();
+    if (!window.puter || !puter.ai || !puter.ai.chat) throw new Error('Free provider unavailable.');
+    const resp = await puter.ai.chat(body.messages, { model: candidate.id, stream: true });
+    let got = false;
+    for await (const part of resp) {
+      const t = part && (part.text || (part.message && part.message.content) || (typeof part === 'string' ? part : ''));
+      if (t) { got = true; onDelta(t, candidate); }
+    }
+    if (!got) throw new Error('Free provider returned no text (you may need to sign in to Puter).');
+    return { model: candidate, truncated: false, annotations: [] };
+  }
+
   async function fetchChatCompletion(pool, body, signal, onDelta) {
     let lastErr = null;
+    const prov = currentProvider();
+    if (!prov) throw new Error('No provider selected.');
+    if (prov.puter) {
+      let lastPuterErr = null;
+      for (let i = 0; i < pool.length; i++) {
+        try { return await puterCompletion(pool[i], body, onDelta); }
+        catch (e) { if (e.name === 'AbortError') throw e; lastPuterErr = e; }
+      }
+      throw lastPuterErr || new Error('Free provider unavailable.');
+    }
     for (let i = 0; i < pool.length; i++) {
       const candidate = pool[i];
       try {
-        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        const headers = { 'Content-Type': 'application/json' };
+        if (!prov.keyless) headers['Authorization'] = 'Bearer ' + (providerKeys[prov.id] || '');
+        if (prov.id === 'openrouter') { headers['HTTP-Referer'] = location.href; headers['X-Title'] = 'OpenRouter Chat'; }
+        const reqBody = Object.assign({}, body, { model: candidate.id });
+        if (!prov.supportsReasoningParam) delete reqBody.reasoning;
+        if (!prov.supportsWeb) delete reqBody.plugins;
+        const res = await fetch(prov.endpoint, {
           method: 'POST',
           signal,
-          headers: {
-            'Authorization': 'Bearer ' + apiKey,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': location.href,
-            'X-Title': 'OpenRouter Chat Artifact'
-          },
-          body: JSON.stringify(Object.assign({}, body, { model: candidate.id }))
+          headers: headers,
+          body: JSON.stringify(reqBody)
         });
         if (!res.ok) {
           const errBody = await res.text().catch(() => '');
@@ -2480,14 +2639,17 @@
 
   let conversationsInitialized = false;
   function showApp() {
-    const hasKey = !!apiKey;
-    setupScreen.style.display = hasKey ? 'none' : 'flex';
-    thread.style.display = hasKey ? 'flex' : 'none';
-    composerForm.style.display = hasKey ? 'flex' : 'none';
-    statusDot.classList.toggle('ready', hasKey);
-    if (hasKey && !conversationsInitialized) {
-      conversationsInitialized = true;
-      initConversations();
+    const ready = hasUsableProvider();
+    setupScreen.style.display = ready ? 'none' : 'flex';
+    thread.style.display = ready ? 'flex' : 'none';
+    composerForm.style.display = ready ? 'flex' : 'none';
+    statusDot.classList.toggle('ready', ready);
+    if (ready) {
+      updateModelBadge(lastAutoModelName === 'selecting…' ? 'selecting…' : lastAutoModelName);
+      if (!conversationsInitialized) {
+        conversationsInitialized = true;
+        initConversations();
+      }
     }
   }
 
@@ -2582,22 +2744,120 @@
     }
   });
 
+  // ---------- Setup screen (provider chooser) ----------
+  const providerSelect = $('providerSelect');
+  const setupNote = $('setupNote');
+
+  function refreshSetupForProvider() {
+    const id = providerSelect.value;
+    const p = PROVIDERS[id];
+    if (p.keyless) {
+      apiKeyInput.style.display = 'none';
+      saveKeyBtn.textContent = 'Start free';
+      setupNote.textContent = 'No API key, no payment. On first use, Puter (a free service) asks you to sign in once — then it covers the AI cost. For the fastest, highest-quality experience, a free provider key (Groq/Gemini) is recommended.';
+    } else {
+      apiKeyInput.style.display = '';
+      apiKeyInput.placeholder = p.keyHint || 'Paste your key';
+      apiKeyInput.value = providerKeys[id] || '';
+      saveKeyBtn.textContent = 'Start chatting';
+      setupNote.textContent = 'Get a free key from ' + p.signup + '. Saved on this device only, sent only to ' + p.label + '.';
+    }
+  }
+  // Default the dropdown to the active/known provider on first render.
+  if (activeProvider && PROVIDERS[activeProvider]) providerSelect.value = activeProvider;
+  refreshSetupForProvider();
+  providerSelect.addEventListener('change', refreshSetupForProvider);
+
   saveKeyBtn.addEventListener('click', () => {
-    const val = apiKeyInput.value.trim();
-    if (!val) return;
-    apiKey = val;
-    try { localStorage.setItem('openrouter_key', apiKey); } catch (e) { /* storage unavailable */ }
+    const id = providerSelect.value;
+    const p = PROVIDERS[id];
+    if (!p.keyless) {
+      const val = apiKeyInput.value.trim();
+      if (!val) { apiKeyInput.focus(); return; }
+      providerKeys[id] = val;
+      saveProviderKeys();
+    }
+    setActiveProvider(id);
     apiKeyInput.value = '';
+    updateModelBadge('selecting…');
     showApp();
   });
 
-  keyBtn.addEventListener('click', () => {
-    if (apiKey && !confirm('Sign out and remove your saved API key from this device?')) return;
-    apiKey = '';
-    localStorage.removeItem('openrouter_key');
-    sessionStorage.removeItem('openrouter_key');
-    showApp();
-  });
+  // ---------- Providers modal (manage keys / switch anytime) ----------
+  const providerModal = $('providerModal');
+  const providerList = $('providerList');
+  const providerClose = $('providerClose');
+
+  function buildProviderRow(p) {
+    const row = document.createElement('div');
+    row.className = 'provider-row';
+    const name = document.createElement('div');
+    name.className = 'prov-name';
+    name.textContent = p.label + (p.keyless ? ' (no key needed)' : '');
+    row.appendChild(name);
+    if (activeProvider === p.id) {
+      const act = document.createElement('span');
+      act.className = 'prov-active';
+      act.textContent = '● active';
+      row.appendChild(act);
+    }
+    const useBtn = document.createElement('button');
+    useBtn.type = 'button';
+    useBtn.className = 'prov-use';
+    useBtn.textContent = activeProvider === p.id ? 'In use' : 'Use';
+    useBtn.disabled = activeProvider === p.id;
+    row.appendChild(useBtn);
+
+    let keyField = null;
+    if (!p.keyless) {
+      keyField = document.createElement('input');
+      keyField.type = 'password';
+      keyField.placeholder = p.keyHint || 'Paste key';
+      keyField.value = providerKeys[p.id] || '';
+      keyField.autocomplete = 'off';
+      row.appendChild(keyField);
+      const hint = document.createElement('div');
+      hint.className = 'prov-hint';
+      const a = document.createElement('a');
+      a.href = 'https://' + p.signup;
+      a.target = '_blank'; a.rel = 'noopener noreferrer';
+      a.textContent = p.signup;
+      hint.appendChild(document.createTextNode('Free key: '));
+      hint.appendChild(a);
+      row.appendChild(hint);
+    }
+
+    useBtn.addEventListener('click', () => {
+      if (keyField) {
+        const v = keyField.value.trim();
+        if (!v) { keyField.focus(); return; }
+        providerKeys[p.id] = v;
+        saveProviderKeys();
+      }
+      setActiveProvider(p.id);
+      updateModelBadge('selecting…');
+      renderProviderList();
+      closeProviderModal();
+      showApp();
+    });
+    if (keyField) {
+      keyField.addEventListener('change', () => {
+        const v = keyField.value.trim();
+        if (v) { providerKeys[p.id] = v; saveProviderKeys(); }
+      });
+    }
+    return row;
+  }
+
+  function renderProviderList() {
+    providerList.textContent = '';
+    ['puter', 'openrouter', 'groq', 'gemini'].forEach(id => providerList.appendChild(buildProviderRow(PROVIDERS[id])));
+  }
+  function openProviderModal() { renderProviderList(); providerModal.classList.add('show'); }
+  function closeProviderModal() { providerModal.classList.remove('show'); }
+  keyBtn.addEventListener('click', openProviderModal);
+  providerClose.addEventListener('click', closeProviderModal);
+  providerModal.addEventListener('click', (e) => { if (e.target === providerModal) closeProviderModal(); });
 
   // ---------- Multi-conversation sidebar ----------
   const sidebar = $('sidebar');
@@ -2907,7 +3167,10 @@
     if (modelOverride) return [modelOverride];
     const lastUser = msgs.slice().reverse().find(m => m.role === 'user');
     const hasImage = lastUser && Array.isArray(lastUser.content) && lastUser.content.some(p => p.type === 'image_url');
-    return hasImage ? visionPool : textPool;
+    const prov = currentProvider();
+    if (prov && prov.id === 'openrouter') return hasImage ? visionPool : textPool;
+    if (prov && hasImage && prov.visionPool) return prov.visionPool;
+    return (prov && prov.textPool) ? prov.textPool : textPool;
   }
 
   // ---------- /model command: pin a specific model from inside the chat ----------
@@ -3126,6 +3389,11 @@
   let webSearchEnabled = false;
   const searchToggleBtn = $('searchToggleBtn');
   searchToggleBtn.addEventListener('click', () => {
+    const prov = currentProvider();
+    if (!webSearchEnabled && (!prov || !prov.supportsWeb)) {
+      notifyLocal('Live web search is available on the OpenRouter provider. Switch via the "Provider" button to use it.');
+      return;
+    }
     webSearchEnabled = !webSearchEnabled;
     searchToggleBtn.classList.toggle('active', webSearchEnabled);
   });
