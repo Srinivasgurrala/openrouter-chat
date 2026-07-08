@@ -850,7 +850,7 @@
     <p>Paste an API key from openrouter.ai/keys. It's kept only in this browser tab's memory — never sent anywhere but OpenRouter.</p>
     <input type="password" id="apiKeyInput" placeholder="sk-or-v1-..." autocomplete="off" spellcheck="false" />
     <button id="saveKeyBtn" type="button">Start chatting</button>
-    <div class="note">Stored in sessionStorage on your device only. Reloading the tab keeps it; closing the tab clears it.</div>
+    <div class="note">Saved on this device only (your browser's local storage) — you won't need to re-enter it next time. Never sent anywhere but OpenRouter. Use the "Key" button to sign out and remove it.</div>
   </div>
 
   <div id="thread" class="thread" style="display:none;"></div>
@@ -898,7 +898,12 @@
     try { localStorage.setItem(THEME_KEY, theme); } catch (e) { /* storage unavailable */ }
   });
 
-  let apiKey = sessionStorage.getItem('openrouter_key') || '';
+  // Key persists across browser restarts (localStorage) so it isn't re-entered
+  // every session; migrate any older sessionStorage-stored key on first load.
+  let apiKey = localStorage.getItem('openrouter_key') || sessionStorage.getItem('openrouter_key') || '';
+  if (apiKey && !localStorage.getItem('openrouter_key')) {
+    try { localStorage.setItem('openrouter_key', apiKey); sessionStorage.removeItem('openrouter_key'); } catch (e) { /* storage unavailable */ }
+  }
   let messages = [];
   let busy = false;
   let abortController = null;
@@ -2272,13 +2277,15 @@
     const val = apiKeyInput.value.trim();
     if (!val) return;
     apiKey = val;
-    sessionStorage.setItem('openrouter_key', apiKey);
+    try { localStorage.setItem('openrouter_key', apiKey); } catch (e) { /* storage unavailable */ }
     apiKeyInput.value = '';
     showApp();
   });
 
   keyBtn.addEventListener('click', () => {
+    if (apiKey && !confirm('Sign out and remove your saved API key from this device?')) return;
     apiKey = '';
+    localStorage.removeItem('openrouter_key');
     sessionStorage.removeItem('openrouter_key');
     showApp();
   });
